@@ -1,10 +1,16 @@
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
 
-// Prisma 7 connects through a driver adapter. The connection string (including
-// the `?schema=ukrstene` isolation) comes from DATABASE_URL.
+import { parseSchemaFromUrl } from './connection.js';
+
+// Prisma 7 connects through a driver adapter. The pg adapter does NOT read the
+// `?schema=ukrstene` param from the connection string, so we parse it off
+// DATABASE_URL ourselves and pass it as the adapter's `schema` to keep queries
+// pointed at the isolated `ukrstene` schema (where migrations live).
 function createPrismaClient(): PrismaClient {
-  const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
+  const connectionString = process.env.DATABASE_URL;
+  const schema = parseSchemaFromUrl(connectionString);
+  const adapter = new PrismaPg({ connectionString }, { schema });
   return new PrismaClient({ adapter });
 }
 

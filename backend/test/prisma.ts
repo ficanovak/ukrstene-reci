@@ -1,6 +1,8 @@
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
 
+import { parseSchemaFromUrl } from '../src/db/connection.js';
+
 /**
  * PrismaClient bound to the TEST database.
  *
@@ -11,14 +13,11 @@ import { PrismaClient } from '@prisma/client';
  */
 const connectionString = process.env.DATABASE_URL;
 
-// The `?schema=` param is a Prisma-ism; the underlying pg driver ignores it, so
-// we read it off the URL and hand it to the adapter as the query schema. This
-// keeps generated queries pointed at the isolated `ukrstene` schema.
-const schema = connectionString
-  ? new URL(connectionString).searchParams.get('schema') ?? undefined
-  : undefined;
+// The pg adapter ignores the `?schema=` param, so we parse it off the URL and
+// hand it to the adapter to keep queries pointed at the isolated schema.
+const schema = parseSchemaFromUrl(connectionString);
 
-const adapter = new PrismaPg({ connectionString }, schema ? { schema } : undefined);
+const adapter = new PrismaPg({ connectionString }, { schema });
 
 export const prisma = new PrismaClient({ adapter });
 
@@ -37,7 +36,6 @@ const TABLES = [
 
 /** Truncate all application tables (RESTART IDENTITY, CASCADE) between tests. */
 export async function truncateAll(): Promise<void> {
-  const qualifier = schema ? `"${schema}".` : '';
-  const list = TABLES.map((t) => `${qualifier}"${t}"`).join(', ');
+  const list = TABLES.map((t) => `"${schema}"."${t}"`).join(', ');
   await prisma.$executeRawUnsafe(`TRUNCATE TABLE ${list} RESTART IDENTITY CASCADE;`);
 }
