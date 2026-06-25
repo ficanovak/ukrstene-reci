@@ -91,6 +91,34 @@ npm -w backend run generate:levels -- --language sr --script lat --mode basic --
 psql ukrstene_dev -c "SELECT level_number, difficulty_band, grid_width, grid_height FROM ukrstene.levels ORDER BY level_number LIMIT 20;"
 ```
 
+### REST API (Fastify) — `backend/src/routes/` + `backend/src/services/`
+Pokretanje servera lokalno:
+```bash
+npm -w backend run dev        # tsx watch src/server.ts (PORT=3000 default)
+curl localhost:3000/v1/health # -> {"status":"ok"}
+```
+
+Rute (sve pod `/v1`):
+| Ruta | Zaštita | Opis |
+|---|---|---|
+| `GET /v1/health` | — | liveness |
+| `POST /v1/auth/anon` | — | `{deviceId}` → JWT (anon nalog) |
+| `POST /v1/auth/social` | — | `{provider,token,anonUserId?}` → JWT (Apple/Google), migrira anon napredak |
+| `GET /v1/levels/next` | JWT | `?mode&lang&script&count` → neodigrani nivoi (1 varijacija/broj, stabilno po korisniku) |
+| `POST /v1/progress` | JWT | upiše rezultat (best-result, idempotentno, Serializable tx) |
+| `POST /v1/progress/batch` | JWT | offline flush (atomično, ≤200) |
+| `POST /v1/admin/dictionary` | `x-admin-key` | bulk dodavanje reči+asocijacija |
+| `POST /v1/admin/generate` | `x-admin-key` | pokreće bulk generisanje (202+jobId) |
+| `POST /v1/admin/regenerate` | `x-admin-key` | penzioniše stare + pravi nove varijacije |
+
+**Env varijable (backend/.env):**
+| Var | Dev | Produkcija |
+|---|---|---|
+| `DATABASE_URL` | lokalni Postgres (gore) | VPS Postgres, isti `?schema=ukrstene` |
+| `JWT_SECRET` | opciono (dev fallback) | **OBAVEZNO** — app puca na startu u production bez njega (fail-closed) |
+| `ADMIN_API_KEY` | postavi za admin rute | **OBAVEZNO** — bez njega admin rute vraćaju 403 (fail-closed) |
+| `PORT` | 3000 | po potrebi |
+
 ### Generator (čista logika, bez baze) — `backend/src/generator/`
 `graphemes` (digrafi), `translit` (ćir↔lat), `grid` (postavljanje reči), `layout` (skandinavka raspored, seeded RNG), `difficulty` (koeficijent 1–100 + pojasevi), `gridData` (JSON ugovor klijent↔server + Zod), `generateLevel` (pipeline za 1 nivo), `bulkGenerate` (batch + persistencija).
 
@@ -136,3 +164,4 @@ Slojevi: unit (čista logika), integration (API + Postgres), component (mobilni 
 - 2026-06-25: inicijalna verzija (Postgres lokalni dev, backend komande, placeholder za mobile).
 - 2026-06-25: dodate seed komande (Task 1.3); migracija `init` primenjena, 5 jezika seed-ovano.
 - 2026-06-25: CI gate dodat; Phase 2 generator kompletan (8 modula, 155 testova); dodate generate:levels CLI komande.
+- 2026-06-25: Phase 3 REST API kompletan (auth, levels, progress, admin); 223 testa; dodate API rute + env varijable. JWT i admin-key fail-closed u produkciji.
