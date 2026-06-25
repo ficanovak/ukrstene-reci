@@ -36,6 +36,12 @@ export type CellProps = {
   active: boolean;
   /** When true, surface correct/wrong coloring (auto-check on). */
   showCheck: boolean;
+  /**
+   * Advanced mode only: this cell is a CONFIRMED, immovable placement. It renders
+   * with the success/"locked" look (green text + tint) regardless of `showCheck`,
+   * so the player sees which letters are settled. Default false.
+   */
+  locked?: boolean;
   /** Side length in px (square). */
   size: number;
   /** Tap handler — the screen sets the active word / cursor. */
@@ -49,6 +55,7 @@ function CellImpl({
   check,
   active,
   showCheck,
+  locked = false,
   size,
   onPress,
 }: CellProps) {
@@ -56,17 +63,25 @@ function CellImpl({
 
   const surfaceCheck = showCheck && check !== 'empty';
   const isWrong = surfaceCheck && check === 'wrong';
-  const isCorrect = surfaceCheck && check === 'correct';
+  // A locked (Advanced) cell always reads as confirmed/correct, even when
+  // auto-check is off — it's a settled placement.
+  const isCorrect = locked || (surfaceCheck && check === 'correct');
 
-  // Background: active word gets a teal tint; otherwise the neutral surface.
-  // `primary` + low opacity reads as a tint without a separate token.
-  const backgroundColor = active ? withAlpha(colors.primary, 0.18) : colors.background;
+  // Background: a locked cell gets a soft green tint; the active word gets a teal
+  // tint; otherwise the neutral surface. (`+ low opacity` reads as a tint.)
+  const backgroundColor = locked
+    ? withAlpha(colors.correct, 0.16)
+    : active
+      ? withAlpha(colors.primary, 0.18)
+      : colors.background;
 
   const borderColor = isWrong
     ? colors.wrong
-    : active
-      ? colors.primary
-      : hairline(colors.text);
+    : locked
+      ? colors.correct
+      : active
+        ? colors.primary
+        : hairline(colors.text);
 
   const textColor = isWrong
     ? colors.wrong
@@ -81,6 +96,7 @@ function CellImpl({
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={`cell-${row}-${col}`}
+      accessibilityState={{ disabled: locked }}
       testID={`cell-${row}-${col}`}
       onPress={onPress ? () => onPress(row, col) : undefined}
       style={[
@@ -90,7 +106,7 @@ function CellImpl({
           height: size,
           backgroundColor,
           borderColor,
-          borderWidth: active ? 2 : StyleSheet.hairlineWidth,
+          borderWidth: locked || active ? 2 : StyleSheet.hairlineWidth,
         },
       ]}
     >

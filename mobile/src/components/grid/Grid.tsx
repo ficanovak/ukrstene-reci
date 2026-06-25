@@ -49,6 +49,12 @@ export type GridProps = {
   activeWordId?: string | null;
   /** Surface correct/wrong coloring (auto-check mode). Default false. */
   showCheck?: boolean;
+  /**
+   * Advanced mode: cell keys ("row,col") that are CONFIRMED/locked placements.
+   * These render with the settled "locked" look (Cell `locked`). Basic mode
+   * omits this prop entirely. Default: no locked cells.
+   */
+  lockedCells?: ReadonlySet<string>;
   /** Override the available width (px). Defaults to the window width. */
   maxWidth?: number;
   /** Optional available height (px) to also clamp vertical fit. */
@@ -68,6 +74,7 @@ export function Grid({
   state,
   activeWordId,
   showCheck = false,
+  lockedCells,
   maxWidth,
   maxHeight,
   onCellPress,
@@ -123,6 +130,7 @@ export function Grid({
                 check={checkCell(state, row, col)}
                 active={activeCells.has(coordKey(row, col))}
                 showCheck={showCheck}
+                locked={lockedCells?.has(coordKey(row, col)) ?? false}
                 onPress={onCellPress}
               />
             </View>
