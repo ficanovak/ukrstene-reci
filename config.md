@@ -84,7 +84,15 @@ npx prisma studio                      # GUI pregled baze
 # Seed jezika (idempotentno)
 npm -w backend run seed
 psql ukrstene_dev -c "SELECT code, name, supported_scripts FROM ukrstene.languages ORDER BY code;"
+
+# Bulk generisanje nivoa (CLI job) — puni 'levels' tabelu
+# args: --language <code|id> --script lat|cyr --mode basic|advanced --levelCount N --variationsPerLevel N --seed N
+npm -w backend run generate:levels -- --language sr --script lat --mode basic --levelCount 50 --variationsPerLevel 3 --seed 1
+psql ukrstene_dev -c "SELECT level_number, difficulty_band, grid_width, grid_height FROM ukrstene.levels ORDER BY level_number LIMIT 20;"
 ```
+
+### Generator (čista logika, bez baze) — `backend/src/generator/`
+`graphemes` (digrafi), `translit` (ćir↔lat), `grid` (postavljanje reči), `layout` (skandinavka raspored, seeded RNG), `difficulty` (koeficijent 1–100 + pojasevi), `gridData` (JSON ugovor klijent↔server + Zod), `generateLevel` (pipeline za 1 nivo), `bulkGenerate` (batch + persistencija).
 
 > Prisma 7 napomena: URL se čita iz `backend/prisma.config.ts` (koji učitava `.env` preko `dotenv`), NE iz `schema.prisma`. Runtime koristi `@prisma/adapter-pg` driver adapter (`backend/src/db/client.ts`).
 
@@ -127,3 +135,4 @@ Slojevi: unit (čista logika), integration (API + Postgres), component (mobilni 
 ## Changelog ovog dokumenta
 - 2026-06-25: inicijalna verzija (Postgres lokalni dev, backend komande, placeholder za mobile).
 - 2026-06-25: dodate seed komande (Task 1.3); migracija `init` primenjena, 5 jezika seed-ovano.
+- 2026-06-25: CI gate dodat; Phase 2 generator kompletan (8 modula, 155 testova); dodate generate:levels CLI komande.
