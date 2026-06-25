@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { z } from "zod";
 
 import { UnknownLevelError, upsertProgress, upsertProgressBatch } from "../services/progress.js";
@@ -53,7 +54,15 @@ export const progressRoutes: FastifyPluginAsync = async (app) => {
 
     const userId = request.user.sub;
     try {
-      const progress = await upsertProgress(app.prisma, { userId, ...parsed.data });
+      // Wrap the read-then-write best-result upsert in a SERIALIZABLE
+      // transaction. `upsertProgress` does findUnique-then-conditional-upsert,
+      // so two concurrent submits for the same (userId, levelId, mode) could
+      // both read "no/worse existing" and clobber the better result. Serializable
+      // isolation makes the pair atomic and closes that read-then-write race.
+      const progress = await app.prisma.$transaction(
+        (tx) => upsertProgress(tx, { userId, ...parsed.data }),
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
       return reply.send({ ok: true, progress });
     } catch (err) {
       if (err instanceof UnknownLevelError) {

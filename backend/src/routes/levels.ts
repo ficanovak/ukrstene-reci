@@ -22,7 +22,9 @@ import type { FastifyPluginAsync } from "fastify";
  *             unknown code is a 404 (the request was well-formed, the resource
  *             does not exist).
  *   - script: 'lat' | 'cyr'
- *   - count:  optional, defaults to 10, clamped to [1, 50].
+ *   - count:  optional, defaults to 10. When present it MUST be an integer in
+ *             [1, 50]; non-numeric / out-of-range (e.g. count=abc, 999, -5) is
+ *             a 400, NOT silently clamped — consistent with the rest of the API.
  * Bad input → 400. See the service for progression semantics (completed-by-
  * number, one-stable-variation-per-number).
  */
@@ -34,14 +36,11 @@ const querySchema = z.object({
   mode: z.enum(["basic", "advanced"]),
   lang: z.string().min(1),
   script: z.enum(["lat", "cyr"]),
-  // Query strings arrive as strings; coerce + clamp. Optional → default.
-  count: z.coerce
-    .number()
-    .int()
-    .min(1)
-    .max(MAX_COUNT)
-    .catch(MAX_COUNT)
-    .optional(),
+  // Query strings arrive as strings; coerce to a number. Optional → default
+  // (DEFAULT_COUNT) below. A PRESENT value must be an int in [1, MAX_COUNT];
+  // anything else (non-numeric, <1, >50) fails validation → 400, rather than
+  // being silently clamped to the max page.
+  count: z.coerce.number().int().min(1).max(MAX_COUNT).optional(),
 });
 
 export const levelsRoutes: FastifyPluginAsync = async (app) => {

@@ -12,6 +12,7 @@ import { defaultSocialVerifier } from "./services/socialVerify.js";
 import type { SocialVerifier } from "./services/socialVerify.js";
 import type { PrismaClient } from "@prisma/client";
 import type {
+  FastifyError,
   FastifyInstance,
   FastifyReply,
   FastifyRequest,
@@ -104,8 +105,22 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
 
   // JWT support. Auth routes sign tokens with `app.jwt.sign`; protected routes
   // verify them via the `authenticate` decorator below.
+  //
+  // FAIL-CLOSED in production: the `DEV_JWT_SECRET` fallback exists only so dev
+  // (NODE_ENV unset) and tests (NODE_ENV='test') work with zero config. If we
+  // booted production with that public, hardcoded secret, ANYONE could forge a
+  // JWT for any `sub` and impersonate any user. So when NODE_ENV==='production'
+  // we REQUIRE a real, distinct JWT_SECRET — an unset or dev-equal value throws
+  // here at startup (fail loud) rather than silently shipping a known secret.
+  const jwtSecret = process.env.JWT_SECRET ?? DEV_JWT_SECRET;
+  if (process.env.NODE_ENV === "production" && jwtSecret === DEV_JWT_SECRET) {
+    throw new Error(
+      "JWT_SECRET must be set to a real, high-entropy value in production " +
+        "(the insecure dev fallback is not allowed). Refusing to start.",
+    );
+  }
   app.register(fastifyJwt, {
-    secret: process.env.JWT_SECRET ?? DEV_JWT_SECRET,
+    secret: jwtSecret,
   });
 
   // Reusable auth guard for protected routes (tasks 3.3/3.4). `jwtVerify()` is
@@ -120,6 +135,24 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       }
     },
   );
+
+  // Generic error handler. Routes already send explicit 4xx replies (zod 400s,
+  // 401/403/404) by returning a reply, so those never reach here. What DOES
+  // reach here is an unexpected throw (a true 5xx) or a Fastify-internal error
+  // (e.g. schema validation, which carries a 4xx `statusCode`). We always log
+  // the full error server-side, then:
+  //   - pass 4xx errors through with their statusCode + message (these are
+  //     client-facing and safe; this preserves validation/auth semantics);
+  //   - mask everything else as a generic 500 `{ error: 'internal' }` WITHOUT
+  //     echoing `err.message`, so internal details never leak to clients.
+  app.setErrorHandler((err: FastifyError, request, reply) => {
+    request.log.error(err);
+    const status = err.statusCode ?? 500;
+    if (status >= 400 && status < 500) {
+      return reply.code(status).send({ error: err.message });
+    }
+    return reply.code(500).send({ error: "internal" });
+  });
 
   // API versioning: all feature routes mount under `/v1`.
   app.register(healthRoutes, { prefix: "/v1" });

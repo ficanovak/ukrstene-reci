@@ -1,4 +1,6 @@
-import type { Mode, PrismaClient, Prisma, UserProgress } from "@prisma/client";
+import { Prisma } from "@prisma/client";
+
+import type { Mode, PrismaClient, UserProgress } from "@prisma/client";
 
 /**
  * Progress submission business logic (Task 3.4): record a completed level's
@@ -27,9 +29,11 @@ import type { Mode, PrismaClient, Prisma, UserProgress } from "@prisma/client";
  *   (keep the user's best progress on link).
  *
  *   We implement this read-then-conditionally-write rather than a blind upsert so
- *   we can compare against the existing row. To stay race-safe under concurrent
- *   submits for the SAME key, callers run it inside a transaction (the route does
- *   for the single submit; the batch wraps the whole array in one $transaction).
+ *   we can compare against the existing row. That pair is racy under concurrent
+ *   submits for the SAME key (both could read "no/worse existing" and clobber the
+ *   better result), so callers run it inside a SERIALIZABLE $transaction: the
+ *   route wraps the single submit (see src/routes/progress.ts), and the batch
+ *   wraps the whole array in one Serializable $transaction below.
  */
 
 export interface ProgressInput {
@@ -157,24 +161,32 @@ async function upsertProgressUnchecked(
  * Validates ALL referenced levelIds once upfront (inside the transaction, before
  * any write); if any is unknown it throws {@link UnknownLevelError} and nothing
  * is committed — the batch stays all-or-nothing (→ 404 at the route).
+ *
+ * Runs at SERIALIZABLE isolation: each item is a findUnique-then-conditional-
+ * upsert, so concurrent batches touching the same key could otherwise both read
+ * a stale "no/worse existing" and clobber the better result. Serializable closes
+ * that read-then-write race (matching the single-submit path).
  */
 export async function upsertProgressBatch(
   prisma: PrismaClient,
   inputs: ProgressInput[],
 ): Promise<UserProgress[]> {
-  return prisma.$transaction(async (tx) => {
-    const missing = await findMissingLevelIds(
-      tx,
-      inputs.map((i) => i.levelId),
-    );
-    if (missing.length > 0) {
-      throw new UnknownLevelError(missing);
-    }
+  return prisma.$transaction(
+    async (tx) => {
+      const missing = await findMissingLevelIds(
+        tx,
+        inputs.map((i) => i.levelId),
+      );
+      if (missing.length > 0) {
+        throw new UnknownLevelError(missing);
+      }
 
-    const results: UserProgress[] = [];
-    for (const input of inputs) {
-      results.push(await upsertProgressUnchecked(tx, input));
-    }
-    return results;
-  });
+      const results: UserProgress[] = [];
+      for (const input of inputs) {
+        results.push(await upsertProgressUnchecked(tx, input));
+      }
+      return results;
+    },
+    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+  );
 }

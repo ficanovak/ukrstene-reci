@@ -146,7 +146,7 @@ describe("GET /v1/levels/next", () => {
     expect(typeof levels[0].id).toBe("string");
   });
 
-  it("defaults count to 10 and clamps to a max of 50", async () => {
+  it("defaults count to 10 when absent", async () => {
     const sr = await makeLanguage("sr");
     const userId = await makeUser();
     for (let n = 1; n <= 60; n++) {
@@ -156,11 +156,33 @@ describe("GET /v1/levels/next", () => {
     const def = await nextReq(userId, "mode=basic&lang=sr&script=lat");
     expect((def.json() as { levels: unknown[] }).levels).toHaveLength(10);
 
-    const clamped = await nextReq(
+    // Max allowed count (50) is honored exactly.
+    const max = await nextReq(userId, "mode=basic&lang=sr&script=lat&count=50");
+    expect((max.json() as { levels: unknown[] }).levels).toHaveLength(50);
+  });
+
+  it("rejects an invalid/out-of-range count with 400 (no silent clamp)", async () => {
+    const sr = await makeLanguage("sr");
+    const userId = await makeUser();
+    await makeLevel({ languageId: sr, levelNumber: 1 });
+
+    // Non-numeric → 400.
+    const nan = await nextReq(userId, "mode=basic&lang=sr&script=lat&count=abc");
+    expect(nan.statusCode).toBe(400);
+
+    // Above max → 400 (NOT clamped to 50).
+    const tooBig = await nextReq(
       userId,
       "mode=basic&lang=sr&script=lat&count=999",
     );
-    expect((clamped.json() as { levels: unknown[] }).levels).toHaveLength(50);
+    expect(tooBig.statusCode).toBe(400);
+
+    // Below min → 400.
+    const tooSmall = await nextReq(
+      userId,
+      "mode=basic&lang=sr&script=lat&count=-5",
+    );
+    expect(tooSmall.statusCode).toBe(400);
   });
 
   it("excludes retired levels", async () => {
