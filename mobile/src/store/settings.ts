@@ -32,6 +32,13 @@ import type { ThemeMode } from '@/theme';
 /** Serbian gameplay script. Cyrillic or Latin. */
 export type ScriptChoice = 'cyrillic' | 'latin';
 
+/**
+ * Auto-check mode (Task 5.4). `'auto'` surfaces correct/wrong colouring while
+ * playing (and the engine's mistake count is shown); `'none'` hides correctness
+ * during play (the board is checked only at the end). Defaults to `'auto'`.
+ */
+export type CheckMode = 'auto' | 'none';
+
 export type SettingsState = {
   /** Chosen UI language, or `null` if the user hasn't picked one yet. */
   language: LanguageCode | null;
@@ -39,12 +46,15 @@ export type SettingsState = {
   script: ScriptChoice;
   /** Theme selection mode. */
   themeMode: ThemeMode;
+  /** In-game auto-check behaviour. */
+  checkMode: CheckMode;
   /** True once the persisted values have been read back from storage. */
   hydrated: boolean;
 
   setLanguage: (language: LanguageCode) => void;
   setScript: (script: ScriptChoice) => void;
   setThemeMode: (themeMode: ThemeMode) => void;
+  setCheckMode: (checkMode: CheckMode) => void;
 };
 
 export const useSettings = create<SettingsState>()(
@@ -53,20 +63,23 @@ export const useSettings = create<SettingsState>()(
       language: null,
       script: 'latin',
       themeMode: 'light',
+      checkMode: 'auto',
       hydrated: false,
 
       setLanguage: (language) => set({ language }),
       setScript: (script) => set({ script }),
       setThemeMode: (themeMode) => set({ themeMode }),
+      setCheckMode: (checkMode) => set({ checkMode }),
     }),
     {
       name: 'ukrstene.settings',
       storage: createJSONStorage(() => AsyncStorage),
       // Only persist the user choices, never the transient `hydrated` flag.
-      partialize: ({ language, script, themeMode }) => ({
+      partialize: ({ language, script, themeMode, checkMode }) => ({
         language,
         script,
         themeMode,
+        checkMode,
       }),
       onRehydrateStorage: () => () => {
         // Runs once the stored values (if any) have been merged in. Flip the

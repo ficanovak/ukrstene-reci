@@ -1,9 +1,9 @@
 /**
- * Game screen placeholder (Task 4.5).
+ * Game screen route (`game/[mode]`).
  *
- * Reads the `mode` route param (`basic` | `advanced`) and shows a themed
- * "coming soon" placeholder plus a back action. Real gameplay (grid, palette,
- * scoring) is Phase 5/6.
+ * Branches on the `mode` route param:
+ *   • `basic`    → the playable Basic mode screen (Task 5.4, `<BasicGame/>`).
+ *   • `advanced` → still the themed "coming soon" placeholder (Phase 6).
  */
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
@@ -11,6 +11,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/ui/Button';
+import { BasicGame } from '@/screens/BasicGame';
 import { typography, useTheme } from '@/theme';
 
 export default function GameScreen() {
@@ -19,7 +20,12 @@ export default function GameScreen() {
   const router = useRouter();
   const { mode } = useLocalSearchParams<{ mode: string }>();
 
-  const modeKey = mode === 'advanced' ? 'mode.advanced' : 'mode.basic';
+  // Basic mode is playable now; Advanced stays a placeholder until Phase 6.
+  if (mode !== 'advanced') {
+    return <BasicGame />;
+  }
+
+  const modeKey = 'mode.advanced';
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}>
