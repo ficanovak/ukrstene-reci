@@ -2,7 +2,10 @@ import { z } from "zod";
 
 import { getNextLevels } from "../services/levels.js";
 
-import type { AuthPayload } from "../types/auth.js";
+// Side-effect import: registers the @fastify/jwt declaration merge that types
+// `request.user` as AuthPayload (so no `as AuthPayload` cast is needed below).
+import "../types/auth.js";
+
 import type { FastifyPluginAsync } from "fastify";
 
 /**
@@ -61,7 +64,7 @@ export const levelsRoutes: FastifyPluginAsync = async (app) => {
         return reply.code(404).send({ error: "unknown language" });
       }
 
-      const userId = (request.user as AuthPayload).sub;
+      const userId = request.user.sub;
       const levels = await getNextLevels(app.prisma, {
         userId,
         languageId: language.id,

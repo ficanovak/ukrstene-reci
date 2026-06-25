@@ -42,6 +42,42 @@ export interface ProgressInput {
   hintsUsed: number;
 }
 
+/**
+ * Thrown when a submitted result references a `levelId` that does not exist.
+ *
+ * Offline clients (mobile Task 4.4) may flush stale/unknown level ids after a
+ * level was retired/renumbered. That is a clean CLIENT error (the resource is
+ * gone), not a server fault — without this guard the upsert hits a Prisma
+ * foreign-key violation and surfaces as a 500. The route layer catches this and
+ * maps it to a 404 naming the missing id(s). `missing` lists EVERY unknown id
+ * (deduped) so a batch flush can report all bad rows at once.
+ */
+export class UnknownLevelError extends Error {
+  readonly missing: string[];
+  constructor(missing: string[]) {
+    super(`unknown levelId: ${missing.join(", ")}`);
+    this.name = "UnknownLevelError";
+    this.missing = missing;
+  }
+}
+
+/**
+ * Return the subset of `levelIds` that do NOT exist (deduped, order-stable).
+ * One `findMany` over the distinct ids is efficient for the batch case.
+ */
+export async function findMissingLevelIds(
+  db: PrismaClient | Prisma.TransactionClient,
+  levelIds: string[],
+): Promise<string[]> {
+  const distinct = [...new Set(levelIds)];
+  const found = await db.level.findMany({
+    where: { id: { in: distinct } },
+    select: { id: true },
+  });
+  const foundSet = new Set(found.map((l) => l.id));
+  return distinct.filter((id) => !foundSet.has(id));
+}
+
 /** True if `incoming` is strictly better than `existing` (stars, then score). */
 function isBetter(
   incoming: Pick<ProgressInput, "stars" | "score">,
@@ -57,6 +93,26 @@ function isBetter(
  * full `PrismaClient`, so it composes inside the batch transaction.
  */
 export async function upsertProgress(
+  db: PrismaClient | Prisma.TransactionClient,
+  input: ProgressInput,
+): Promise<UserProgress> {
+  // Reject an unknown levelId as a clean client error (→ 404 at the route)
+  // rather than letting the upsert hit a Prisma foreign-key violation (→ 500).
+  const missing = await findMissingLevelIds(db, [input.levelId]);
+  if (missing.length > 0) {
+    throw new UnknownLevelError(missing);
+  }
+
+  return upsertProgressUnchecked(db, input);
+}
+
+/**
+ * Core best-result upsert WITHOUT the levelId-existence guard. Internal helper
+ * for callers that have already validated the referenced level(s) — notably the
+ * batch path, which checks all ids once upfront so it doesn't repeat the lookup
+ * per row. Not exported; use {@link upsertProgress} for the validated path.
+ */
+async function upsertProgressUnchecked(
   db: PrismaClient | Prisma.TransactionClient,
   input: ProgressInput,
 ): Promise<UserProgress> {
@@ -97,15 +153,27 @@ export async function upsertProgress(
  * applied (each under the best-result policy) or none is. Atomicity keeps the
  * offline-flush all-or-nothing, so a partially-applied batch can't leave the
  * client's queue in an ambiguous state. Returns the resulting rows.
+ *
+ * Validates ALL referenced levelIds once upfront (inside the transaction, before
+ * any write); if any is unknown it throws {@link UnknownLevelError} and nothing
+ * is committed — the batch stays all-or-nothing (→ 404 at the route).
  */
 export async function upsertProgressBatch(
   prisma: PrismaClient,
   inputs: ProgressInput[],
 ): Promise<UserProgress[]> {
   return prisma.$transaction(async (tx) => {
+    const missing = await findMissingLevelIds(
+      tx,
+      inputs.map((i) => i.levelId),
+    );
+    if (missing.length > 0) {
+      throw new UnknownLevelError(missing);
+    }
+
     const results: UserProgress[] = [];
     for (const input of inputs) {
-      results.push(await upsertProgress(tx, input));
+      results.push(await upsertProgressUnchecked(tx, input));
     }
     return results;
   });

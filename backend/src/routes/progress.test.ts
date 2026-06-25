@@ -269,6 +269,22 @@ describe("progress routes (Task 3.4)", () => {
       expect(res.statusCode).toBe(400);
     });
 
+    it("returns 404 for a non-existent levelId and creates no row", async () => {
+      await makeLanguage("sr");
+      const userId = await makeUser();
+
+      const res = await submit(userId, {
+        levelId: "does-not-exist",
+        stars: 3,
+        score: 100,
+      });
+      expect(res.statusCode).toBe(404);
+      expect(res.json()).toMatchObject({ error: expect.stringContaining("does-not-exist") });
+
+      const rows = await prisma.userProgress.findMany({ where: { userId } });
+      expect(rows).toHaveLength(0);
+    });
+
     it("closes the progress→serve loop: a completed level number is no longer served", async () => {
       const sr = await makeLanguage("sr");
       const userId = await makeUser();
@@ -367,6 +383,23 @@ describe("progress routes (Task 3.4)", () => {
       }));
       const res = await submitBatch(userId, items);
       expect(res.statusCode).toBe(400);
+    });
+
+    it("returns 404 when any levelId is unknown and writes NOTHING (atomic)", async () => {
+      const sr = await makeLanguage("sr");
+      const userId = await makeUser();
+      const valid = await makeLevel({ languageId: sr, levelNumber: 1 });
+
+      const res = await submitBatch(userId, [
+        { levelId: valid.id, stars: 3, score: 100 },
+        { levelId: "does-not-exist", stars: 4, score: 200 },
+      ]);
+      expect(res.statusCode).toBe(404);
+      expect(res.json()).toMatchObject({ error: expect.stringContaining("does-not-exist") });
+
+      // Atomicity: the valid item must NOT have been written either.
+      const rows = await prisma.userProgress.findMany({ where: { userId } });
+      expect(rows).toHaveLength(0);
     });
 
     it("rejects a batch with an invalid item (400) and writes nothing (atomic)", async () => {

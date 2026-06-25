@@ -1,8 +1,11 @@
 import { z } from "zod";
 
-import { upsertProgress, upsertProgressBatch } from "../services/progress.js";
+import { UnknownLevelError, upsertProgress, upsertProgressBatch } from "../services/progress.js";
 
-import type { AuthPayload } from "../types/auth.js";
+// Side-effect import: registers the @fastify/jwt declaration merge that types
+// `request.user` as AuthPayload (so no `as AuthPayload` cast is needed below).
+import "../types/auth.js";
+
 import type { FastifyPluginAsync } from "fastify";
 
 /**
@@ -48,9 +51,17 @@ export const progressRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(400).send({ error: "invalid body" });
     }
 
-    const userId = (request.user as AuthPayload).sub;
-    const progress = await upsertProgress(app.prisma, { userId, ...parsed.data });
-    return reply.send({ ok: true, progress });
+    const userId = request.user.sub;
+    try {
+      const progress = await upsertProgress(app.prisma, { userId, ...parsed.data });
+      return reply.send({ ok: true, progress });
+    } catch (err) {
+      if (err instanceof UnknownLevelError) {
+        // Stale/unknown levelId from an offline client: clean 404, not a 500.
+        return reply.code(404).send({ error: `unknown levelId: ${err.missing.join(", ")}` });
+      }
+      throw err;
+    }
   });
 
   app.post("/progress/batch", { preHandler: app.authenticate }, async (request, reply) => {
@@ -59,9 +70,17 @@ export const progressRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(400).send({ error: "invalid body" });
     }
 
-    const userId = (request.user as AuthPayload).sub;
+    const userId = request.user.sub;
     const inputs = parsed.data.items.map((item) => ({ userId, ...item }));
-    const results = await upsertProgressBatch(app.prisma, inputs);
-    return reply.send({ ok: true, count: results.length });
+    try {
+      const results = await upsertProgressBatch(app.prisma, inputs);
+      return reply.send({ ok: true, count: results.length });
+    } catch (err) {
+      if (err instanceof UnknownLevelError) {
+        // Any unknown levelId aborts the whole (atomic) batch: nothing written.
+        return reply.code(404).send({ error: `unknown levelId: ${err.missing.join(", ")}` });
+      }
+      throw err;
+    }
   });
 };

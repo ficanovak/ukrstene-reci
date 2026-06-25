@@ -10,3 +10,17 @@
 export interface AuthPayload {
   sub: string;
 }
+
+/**
+ * Type `request.user` (and the `app.jwt.sign` payload) as {@link AuthPayload}
+ * globally via @fastify/jwt declaration merging, so protected routes can read
+ * `request.user.sub` directly without an inline `as AuthPayload` cast. Both
+ * login paths sign `{ sub }`, so `payload` and `user` share the same shape (no
+ * `formatUser` transform is configured).
+ */
+declare module "@fastify/jwt" {
+  interface FastifyJWT {
+    payload: AuthPayload;
+    user: AuthPayload;
+  }
+}
