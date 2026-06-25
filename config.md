@@ -80,6 +80,10 @@ npx prisma validate
 npx prisma generate
 npx prisma migrate dev --name <ime>   # primeni migraciju na dev bazu
 npx prisma studio                      # GUI pregled baze
+
+# Seed jezika (idempotentno)
+npm -w backend run seed
+psql ukrstene_dev -c "SELECT code, name, supported_scripts FROM ukrstene.languages ORDER BY code;"
 ```
 
 > Prisma 7 napomena: URL se čita iz `backend/prisma.config.ts` (koji učitava `.env` preko `dotenv`), NE iz `schema.prisma`. Runtime koristi `@prisma/adapter-pg` driver adapter (`backend/src/db/client.ts`).
@@ -99,6 +103,20 @@ npm -w mobile test               # Jest + React Native Testing Library
 
 ---
 
+## CI / Testovi (kapija na svaki deploy)
+
+GitHub Actions workflow: `.github/workflows/ci.yml`. Pokreće se na svaki `push` na `main` i na svaki PR:
+`npm ci → prisma generate → lint → tsc --noEmit → backend testovi` (sa `postgres:14` service container-om za integration testove). Deploy (kasnije) zavisi od zelene kapije.
+
+Lokalno pokretanje cele palete testova:
+```bash
+npm -w backend test       # svi backend testovi (unit + DB integration)
+npm -w backend run lint
+npx tsc --noEmit --project backend/tsconfig.json
+```
+
+Slojevi: unit (čista logika), integration (API + Postgres), component (mobilni UI — kasnije), E2E (Maestro/Detox — kasnije).
+
 ## Korisni linkovi
 - PRD / dizajn: `docs/plans/2026-06-25-ukrstene-reci-design.md`
 - Implementacioni plan: `docs/plans/2026-06-25-ukrstene-reci-implementation.md`
@@ -108,3 +126,4 @@ npm -w mobile test               # Jest + React Native Testing Library
 
 ## Changelog ovog dokumenta
 - 2026-06-25: inicijalna verzija (Postgres lokalni dev, backend komande, placeholder za mobile).
+- 2026-06-25: dodate seed komande (Task 1.3); migracija `init` primenjena, 5 jezika seed-ovano.
