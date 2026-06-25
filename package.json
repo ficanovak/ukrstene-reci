@@ -1,0 +1,16 @@
+{
+  "name": "ukrstene-reci",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Ukrstene Reci - a crossword game (backend + mobile monorepo)",
+  "workspaces": [
+    "backend",
+    "mobile"
+  ],
+  "scripts": {
+    "dev:backend": "npm -w backend run dev",
+    "build:backend": "npm -w backend run build",
+    "test:backend": "npm -w backend run test",
+    "start:mobile": "npm -w mobile run start"
+  }
+}
