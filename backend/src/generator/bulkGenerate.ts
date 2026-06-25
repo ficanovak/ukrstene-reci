@@ -40,6 +40,21 @@
  *    does NOT retire/replace existing levels — the PRD's "shuffle/regenerate
  *    retires old + creates new" is a SEPARATE admin action, out of scope here.
  *
+ *    KNOWN LIMITATION (sub-seed gap on degenerate skips). A top-up run resumes
+ *    variation indices from the COUNT of existing active variations
+ *    (`variationIndex = existing + i`). The count is gap-unaware: it only knows
+ *    HOW MANY variations exist, not WHICH canonical indices succeeded. So if an
+ *    earlier run hit a degenerate skip (policy 5) and left a GAP — e.g. index 1
+ *    failed while indices 0 and 2 succeeded, leaving count = 2 — a later top-up
+ *    starts at index 2, which already succeeded, and re-derives an
+ *    already-used sub-seed. The result is a variation whose CONTENT duplicates
+ *    an existing one rather than one that fills the exact gap. This is BOUNDED:
+ *    top-up never creates more than `variationsPerLevel` active rows total, so it
+ *    can never over-create — it can only regenerate already-seen content for the
+ *    make-up slot. We accept this for v1 because the count is all we persist;
+ *    correct gap-filling would require persisting the per-row variationIndex on
+ *    the Level schema (deferred — no migration in this task).
+ *
  * 5. DEGENERATE SKIPS. `generateLevel` returns null only for degenerate inputs
  *    (zero words placed across every attempt). We skip those, log them, and
  *    count only successfully created levels. `levelNumbers` in the result lists
@@ -175,6 +190,8 @@ export async function bulkGenerate(
     let createdForNumber = 0;
     // Offset the variation index by what already exists so re-runs derive fresh
     // sub-seeds for the new variations rather than recomputing existing ones.
+    // NOTE: `existing` is a COUNT, not a high-water mark, so this is gap-unaware
+    // on the degenerate-skip path — see the KNOWN LIMITATION in policy (4).
     for (let i = 0; i < toCreate; i++) {
       const variationIndex = existing + i;
       const subSeed = subSeedFor(seed, levelNumber, variationIndex);

@@ -2,7 +2,11 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 
 import { prisma, truncateAll } from "../../test/prisma.js";
 import { parseGridData } from "./gridData.js";
-import { bulkGenerate, type BulkGenerateInput } from "./bulkGenerate.js";
+import {
+  bandForLevelNumber,
+  bulkGenerate,
+  type BulkGenerateInput,
+} from "./bulkGenerate.js";
 import { type DictionaryEntry } from "./generateLevel.js";
 
 /**
@@ -85,9 +89,13 @@ describe("bulkGenerate", () => {
     expect(result.levelNumbers).toEqual([1, 2, 3]);
   });
 
-  it("Test B: variations of a level number share a variationGroup; level numbers map to ascending bands", async () => {
+  it("Test B: all variations of one level number share a single variationGroup", async () => {
     const languageId = await seedLanguage();
-    await bulkGenerate(baseInput(languageId, { levelCount: 3, variationsPerLevel: 2 }));
+    // Several level numbers, MULTIPLE variations each, so the shared-group
+    // assertion is meaningful (a number with one row could never fail it).
+    await bulkGenerate(
+      baseInput(languageId, { levelCount: 5, variationsPerLevel: 3 }),
+    );
 
     const rows = await prisma.level.findMany({ orderBy: { id: "asc" } });
 
@@ -99,41 +107,59 @@ describe("bulkGenerate", () => {
       byNumber.set(r.levelNumber, list);
     }
 
-    // All variations of a level number share one variationGroup value.
-    for (const [, list] of byNumber) {
+    // At least one level number must have produced >1 variation, otherwise the
+    // "share a group" check would be vacuous against this fixture.
+    expect([...byNumber.values()].some((list) => list.length > 1)).toBe(true);
+
+    // All variations of a level number share one variationGroup value, and that
+    // value is the level number itself (policy 2).
+    for (const [num, list] of byNumber) {
       const groups = new Set(list.map((r) => r.variationGroup));
       expect(groups.size).toBe(1);
+      expect(list[0]!.variationGroup).toBe(num);
     }
-
-    // Distinct level numbers map to distinct, ascending target bands. With
-    // LEVELS_PER_BAND >= levelCount each level number lands in its own band,
-    // so level 1's band < level 2's band < level 3's band.
-    const bandOfNumber = new Map<number, number>();
-    for (const [num, list] of byNumber) {
-      // Within a number all variations target the same band; bands are within
-      // tolerance of that target, so they are equal-or-adjacent. Record the min.
-      bandOfNumber.set(num, Math.min(...list.map((r) => r.difficultyBand)));
-    }
-    const b1 = bandOfNumber.get(1)!;
-    const b2 = bandOfNumber.get(2)!;
-    const b3 = bandOfNumber.get(3)!;
-    // Coarse model: assert a non-decreasing trend across level numbers.
-    expect(b1).toBeLessThanOrEqual(b2);
-    expect(b2).toBeLessThanOrEqual(b3);
   });
 
-  it("Test C: levels span easy->hard (first level band <= last level band)", async () => {
+  it("Test C: level numbers map to a genuine easy->hard band trend", async () => {
     const languageId = await seedLanguage();
-    // Spread numbers far apart so the band difference is unmistakable.
-    await bulkGenerate(baseInput(languageId, { levelCount: 3, variationsPerLevel: 1 }));
+    // Use a levelCount that EXCEEDS LEVELS_PER_BAND (=10) so distinct level
+    // numbers land in distinct TARGET bands: level 1 -> band 1, level 11 ->
+    // band 2, level 25 -> band 3. With levelCount=3 (< LEVELS_PER_BAND) every
+    // level would map to band 1 and any "trend" assertion would pass vacuously.
+    const levelCount = 25;
+    await bulkGenerate(
+      baseInput(languageId, { levelCount, variationsPerLevel: 1 }),
+    );
 
+    // TARGET band is deterministic via bandForLevelNumber — this is the robust
+    // thing to assert. The trend is real, not vacuous, because the target band
+    // spans 1..3 across the 25 level numbers.
+    const targetBands = Array.from({ length: levelCount }, (_, i) =>
+      bandForLevelNumber(i + 1),
+    );
+    // Strictly easier-to-harder end to end.
+    expect(targetBands[0]!).toBeLessThan(targetBands[levelCount - 1]!);
+    // Non-decreasing across every adjacent pair (monotone easy->hard).
+    for (let i = 1; i < targetBands.length; i++) {
+      expect(targetBands[i]!).toBeGreaterThanOrEqual(targetBands[i - 1]!);
+    }
+    // Concretely: level 1 -> band 1, level 25 -> band 3.
+    expect(bandForLevelNumber(1)).toBe(1);
+    expect(bandForLevelNumber(25)).toBe(3);
+
+    // ACHIEVED difficultyBand is noisy: this tiny hand-picked fixture only has
+    // ~15 heavily-overlapping words, so generated layouts cluster in a narrow
+    // achieved-band range (~7-8) almost regardless of the requested target
+    // band. We therefore assert only a TOLERANT trend on achieved bands: the
+    // first level number's achieved band must not exceed the last's.
     const rows = await prisma.level.findMany();
     const lowest = rows.filter((r) => r.levelNumber === 1);
-    const highest = rows.filter((r) => r.levelNumber === Math.max(...rows.map((x) => x.levelNumber)));
-
-    const minBandFirst = Math.min(...lowest.map((r) => r.difficultyBand));
-    const maxBandLast = Math.max(...highest.map((r) => r.difficultyBand));
-    expect(minBandFirst).toBeLessThanOrEqual(maxBandLast);
+    const highest = rows.filter((r) => r.levelNumber === levelCount);
+    expect(lowest.length).toBeGreaterThan(0);
+    expect(highest.length).toBeGreaterThan(0);
+    const minAchievedFirst = Math.min(...lowest.map((r) => r.difficultyBand));
+    const maxAchievedLast = Math.max(...highest.map((r) => r.difficultyBand));
+    expect(minAchievedFirst).toBeLessThanOrEqual(maxAchievedLast);
   });
 
   it("Test D: re-running with the same input does not pile up duplicate variations", async () => {
