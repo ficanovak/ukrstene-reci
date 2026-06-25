@@ -153,7 +153,10 @@ npx expo-doctor                  # health check (21/21)
 - `components/keyboard/` — `Keyboard` + `layouts` (po jeziku/pismu, digrafi jedan taster)
 - `game/advanced` — Advanced palette engine (deal 5 iz potrebnih, place/unplace, submit lock/clear/mistake/refill, seeded), `game/rng` (mulberry32)
 - `components/palette/` — `LetterPalette`/`LetterTile` (amber pločice, tap-to-place, Potvrdi)
-- `screens/BasicGame` + `screens/AdvancedGame` — oba moda igriva (game/[mode] ruta granja basic/advanced); Advanced ima §6.4 animacije (RN Animated) + haptiku
+- `screens/BasicGame` + `screens/AdvancedGame` — oba moda igriva (game/[mode] ruta granja basic/advanced); Advanced ima §6.4 animacije (RN Animated) + haptiku; oba imaju hint dugmad
+- `game/scoring` — `scoreLevel({mistakes,hintsUsed,difficultyBand})` → 1–5 zvezdica (band forgiveness, tunable konstante)
+- `game/hints` — word+letter hint (1+1 po nivou), `HintProvider` interfejs (v1 free, kasnije inventory/ads)
+- `screens/Results` — zvezdice (staggered), skor, greške, hintovi; čuva napredak lokalno (synced=0 → sync) na prikazu
 
 **API base URL:** `app.json` → `expo.extra.apiBaseUrl` (default `http://localhost:3000`). Android emulator: `10.0.2.2`; fizički uređaj: LAN IP host-a; prod: VPS HTTPS preko EAS profila.
 
@@ -189,3 +192,4 @@ Slojevi: unit (čista logika), integration (API + Postgres), component (mobilni 
 - 2026-06-25: Phase 3 REST API kompletan (auth, levels, progress, admin); 223 testa; dodate API rute + env varijable. JWT i admin-key fail-closed u produkciji.
 - 2026-06-25: Mobile scaffold (Expo SDK 56, Task 0.3) + Phase 4 foundation kompletan (theme, i18n, SQLite, API klijent, sync, navigacija); 73 mobilna testa; app bundluje (expo-doctor 21/21).
 - 2026-06-26: Phase 5 Basic mod kompletan (game engine, grid renderer, keyboard, BasicGame screen); 167 mobilna testa; vizuelno potvrdjeno na iOS simulatoru (deep link exp://HOST:8081/--/game/basic). Pokretanje: `npm -w mobile run start` pa 'i'.
+- 2026-06-26: Phase 6 Advanced mod (palette engine, LetterPalette UI, AdvancedGame + §6.4 animacije/haptika) + Phase 7 (scoring/zvezdice, hints word+letter, Results screen sa perzistencijom napretka). 240 mobilna testa. Oba moda potpuno igriva sa skorom. Vizuelno potvrdjeno (game/advanced).
