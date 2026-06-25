@@ -12,5 +12,12 @@ export default defineConfig({
     environment: "node",
     include: ["src/**/*.test.ts"],
     globalSetup: ["test/globalSetup.ts"],
+    // Integration tests share ONE Postgres test database. Running test FILES in
+    // parallel lets their writes/truncates interleave and clobber each other
+    // (e.g. one file's TRUNCATE wiping rows another is mid-assertion on). Pure
+    // unit tests are unaffected by serial files. So we disable file-level
+    // parallelism for a deterministic, race-free suite; tests WITHIN a file
+    // still run in their defined order.
+    fileParallelism: false,
   },
 });
