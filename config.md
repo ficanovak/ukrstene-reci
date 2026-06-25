@@ -147,7 +147,11 @@ npx expo-doctor                  # health check (21/21)
 - `db/` — expo-sqlite (cached_levels, local_progress), `levelRepo`/`progressRepo` (offline)
 - `api/` — tipovani klijent (`createApiClient`) za backend `/v1`, `ApiError`
 - `services/` — `sync` (flush nesinhronizovanog napretka + prefetch paketa nivoa)
-- `store/` — `useSettings` (zustand + AsyncStorage: language/script/themeMode)
+- `store/` — `useSettings` (zustand + AsyncStorage: language/script/themeMode/checkMode)
+- `game/` — `engine` (pure game state: fill, intersekcije, mistakes, isSolved), `gridData.types` (mobile mirror backend GridData), `sampleLevel` (dev fallback), `useLevel` (cache→sample loader)
+- `components/grid/` — `Grid`/`Cell`/`ClueCell` (auto-size, fit širine 6–9 bez skrola, asocijacije+strelice, highlight)
+- `components/keyboard/` — `Keyboard` + `layouts` (po jeziku/pismu, digrafi jedan taster)
+- `screens/BasicGame` — playable Basic mod (game/[mode] ruta za basic; advanced placeholder)
 
 **API base URL:** `app.json` → `expo.extra.apiBaseUrl` (default `http://localhost:3000`). Android emulator: `10.0.2.2`; fizički uređaj: LAN IP host-a; prod: VPS HTTPS preko EAS profila.
 
@@ -182,3 +186,4 @@ Slojevi: unit (čista logika), integration (API + Postgres), component (mobilni 
 - 2026-06-25: CI gate dodat; Phase 2 generator kompletan (8 modula, 155 testova); dodate generate:levels CLI komande.
 - 2026-06-25: Phase 3 REST API kompletan (auth, levels, progress, admin); 223 testa; dodate API rute + env varijable. JWT i admin-key fail-closed u produkciji.
 - 2026-06-25: Mobile scaffold (Expo SDK 56, Task 0.3) + Phase 4 foundation kompletan (theme, i18n, SQLite, API klijent, sync, navigacija); 73 mobilna testa; app bundluje (expo-doctor 21/21).
+- 2026-06-26: Phase 5 Basic mod kompletan (game engine, grid renderer, keyboard, BasicGame screen); 167 mobilna testa; vizuelno potvrdjeno na iOS simulatoru (deep link exp://HOST:8081/--/game/basic). Pokretanje: `npm -w mobile run start` pa 'i'.
