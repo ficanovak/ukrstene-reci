@@ -1,0 +1,78 @@
+name: CI
+
+# Test gate for the Ukrstene Reci monorepo. Runs on every push to main and on
+# every pull request. A future deploy job should be gated on this workflow
+# passing (e.g. `needs: [backend]` plus an environment/branch condition).
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    name: Backend (lint, typecheck, test)
+    runs-on: ubuntu-latest
+
+    # Postgres service container the integration tests talk to. The test DB is
+    # created up front via POSTGRES_DB so `prisma migrate deploy` (run by the
+    # Vitest globalSetup) has a database to apply migrations to.
+    services:
+      postgres:
+        image: postgres:14
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ukrstene_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      # The test suite resolves DATABASE_URL from the environment first and only
+      # falls back to backend/.env.test (which does not exist in CI). This points
+      # at the Postgres service container above. The `?schema=ukrstene` keeps the
+      # app's tables in their isolated schema, matching local dev and prod.
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ukrstene_test?schema=ukrstene
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies (root workspaces)
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+        working-directory: backend
+
+      - name: Lint
+        run: npm -w backend run lint
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+        working-directory: backend
+
+      - name: Test (Prisma integration against Postgres)
+        run: npm -w backend test
+
+  # ---------------------------------------------------------------------------
+  # mobile job placeholder. The mobile workspace is not scaffolded yet. When it
+  # is, add a `mobile` job here (lint/typecheck/test). A future deploy job
+  # should depend on both, e.g.:
+  #
+  #   deploy:
+  #     needs: [backend, mobile]
+  #     if: github.ref == 'refs/heads/main'
+  #     runs-on: ubuntu-latest
+  #     ...
+  # ---------------------------------------------------------------------------
