@@ -1,11 +1,12 @@
 // Prisma schema for the "Ukrstene Reci" backend.
-// Models are added in Task 1.2; for now this only wires up the
-// generator + datasource so `prisma generate` / `prisma validate` work.
 //
 // Prisma 7 manages the connection URL outside the schema:
 //   - the CLI reads it from `prisma.config.ts` (`datasource.url`)
 //   - the runtime client gets it via a driver adapter (see src/db/client.ts)
-// The `?schema=ukrstene` isolation lives in the DATABASE_URL itself.
+// The `?schema=ukrstene` isolation lives in the DATABASE_URL itself, so every
+// table created by migrations lands in the dedicated `ukrstene` Postgres schema
+// without needing the multiSchema preview feature (we only use one non-default
+// schema, selected via the search_path in the connection string).
 
 generator client {
   provider = "prisma-client-js"
@@ -13,4 +14,151 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+}
+
+enum Mode {
+  basic
+  advanced
+
+  @@map("mode")
+}
+
+enum ClueType {
+  text
+  image
+
+  @@map("clue_type")
+}
+
+enum AuthProvider {
+  apple
+  google
+  anon
+
+  @@map("auth_provider")
+}
+
+enum LevelStatus {
+  active
+  retired
+
+  @@map("level_status")
+}
+
+model Language {
+  id               String   @id @default(cuid())
+  code             String   @unique
+  name             String
+  supportedScripts String[] @map("supported_scripts")
+
+  dictionaries  Dictionary[]
+  personalities Personality[]
+  levels        Level[]
+
+  @@map("languages")
+}
+
+model Dictionary {
+  id         String @id @default(cuid())
+  languageId String @map("language_id")
+  word       String
+  script     String
+  frequency  Float
+  length     Int
+
+  language Language @relation(fields: [languageId], references: [id], onDelete: Cascade)
+
+  clues               Clue[]
+  personalityAnswers  Personality[] @relation("PersonalityAnswerWord")
+
+  @@index([languageId, script, length])
+  @@map("dictionary")
+}
+
+model Clue {
+  id            String   @id @default(cuid())
+  wordId        String   @map("word_id")
+  type          ClueType
+  content       String
+  personalityId String?  @map("personality_id")
+
+  word        Dictionary   @relation(fields: [wordId], references: [id], onDelete: Cascade)
+  personality Personality? @relation(fields: [personalityId], references: [id], onDelete: SetNull)
+
+  @@index([wordId])
+  @@index([personalityId])
+  @@map("clues")
+}
+
+model Personality {
+  id           String @id @default(cuid())
+  languageId   String @map("language_id")
+  name         String
+  imageUrl     String @map("image_url")
+  answerWordId String @map("answer_word_id")
+
+  language   Language   @relation(fields: [languageId], references: [id], onDelete: Cascade)
+  answerWord Dictionary @relation("PersonalityAnswerWord", fields: [answerWordId], references: [id], onDelete: Cascade)
+
+  clues Clue[]
+
+  @@index([languageId])
+  @@index([answerWordId])
+  @@map("personalities")
+}
+
+model Level {
+  id                    String      @id @default(cuid())
+  mode                  Mode
+  languageId            String      @map("language_id")
+  script                String
+  difficultyCoefficient Int         @map("difficulty_coefficient")
+  difficultyBand        Int         @map("difficulty_band")
+  levelNumber           Int         @map("level_number")
+  variationGroup        Int         @map("variation_group")
+  gridWidth             Int         @map("grid_width")
+  gridHeight            Int         @map("grid_height")
+  gridData              Json        @map("grid_data")
+  status                LevelStatus @default(active)
+
+  language Language @relation(fields: [languageId], references: [id], onDelete: Cascade)
+
+  progress UserProgress[]
+
+  @@index([languageId, script, mode, levelNumber, status])
+  @@map("levels")
+}
+
+model User {
+  id                String       @id @default(cuid())
+  authProvider      AuthProvider @map("auth_provider")
+  externalId        String?      @map("external_id")
+  currentLanguageId String?      @map("current_language_id")
+  currentScript     String?      @map("current_script")
+  theme             String?
+  checkMode         String?      @map("check_mode")
+  createdAt         DateTime     @default(now()) @map("created_at")
+
+  progress UserProgress[]
+
+  @@map("users")
+}
+
+model UserProgress {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  levelId     String   @map("level_id")
+  mode        Mode
+  stars       Int
+  score       Int
+  mistakes    Int
+  hintsUsed   Int      @map("hints_used")
+  completedAt DateTime @default(now()) @map("completed_at")
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  level Level @relation(fields: [levelId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, levelId, mode])
+  @@index([levelId])
+  @@map("user_progress")
 }

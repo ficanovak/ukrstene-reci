@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "echo \"backend dev not yet implemented\" && exit 0",
-    "build": "tsc",
+    "build": "tsc -p tsconfig.build.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint ."
