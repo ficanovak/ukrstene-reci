@@ -128,14 +128,30 @@ Rute (sve pod `/v1`):
 
 ## Mobile (Expo)
 
-> Još nije scaffold-ovano (Task 0.3). Biće dopunjeno kad se kreira `mobile/` Expo aplikacija.
+Expo SDK 56 + Expo Router + TypeScript. Kod pod `mobile/src/`, rute pod `mobile/src/app/`.
 
-Planirane komande:
 ```bash
-npm -w mobile run start          # Expo dev server (Metro)
-# i / a u Metro terminalu -> iOS simulator / Android emulator
-npm -w mobile test               # Jest + React Native Testing Library
+npm -w mobile run start          # Expo dev server (Metro); pa 'i' iOS / 'a' Android / 'w' web
+npm run start:mobile             # isto, iz root-a
+npm -w mobile test               # Jest (jest-expo) + React Native Testing Library
+npx tsc --noEmit                 # (iz mobile/) type-check
+# Provera da app bundluje bez simulatora:
+cd mobile && npx expo export --platform ios   # ili --platform web
+npx expo-doctor                  # health check (21/21)
 ```
+
+**Struktura (`mobile/src/`):**
+- `app/` — Expo Router rute: `_layout` (provideri + font/hydration gate), `index` (home), `onboarding` (izbor jezika), `game/[mode]`, `settings`
+- `theme/` — `ThemeProvider`/`useTheme`, light "Topla enigmatika" + dark palete, Nunito font
+- `i18n/` — i18next, 5 jezika (mk ćirilica), `setLanguage`, device detekcija
+- `db/` — expo-sqlite (cached_levels, local_progress), `levelRepo`/`progressRepo` (offline)
+- `api/` — tipovani klijent (`createApiClient`) za backend `/v1`, `ApiError`
+- `services/` — `sync` (flush nesinhronizovanog napretka + prefetch paketa nivoa)
+- `store/` — `useSettings` (zustand + AsyncStorage: language/script/themeMode)
+
+**API base URL:** `app.json` → `expo.extra.apiBaseUrl` (default `http://localhost:3000`). Android emulator: `10.0.2.2`; fizički uređaj: LAN IP host-a; prod: VPS HTTPS preko EAS profila.
+
+> Testovi mobilnog: čista logika + repo SQL (in-memory better-sqlite3) + API/sync (mock fetch). Native expo-sqlite/expo-constants se ne učitavaju u Jest-u — zato tanki interfejsi + injekcija.
 
 ---
 
@@ -165,3 +181,4 @@ Slojevi: unit (čista logika), integration (API + Postgres), component (mobilni 
 - 2026-06-25: dodate seed komande (Task 1.3); migracija `init` primenjena, 5 jezika seed-ovano.
 - 2026-06-25: CI gate dodat; Phase 2 generator kompletan (8 modula, 155 testova); dodate generate:levels CLI komande.
 - 2026-06-25: Phase 3 REST API kompletan (auth, levels, progress, admin); 223 testa; dodate API rute + env varijable. JWT i admin-key fail-closed u produkciji.
+- 2026-06-25: Mobile scaffold (Expo SDK 56, Task 0.3) + Phase 4 foundation kompletan (theme, i18n, SQLite, API klijent, sync, navigacija); 73 mobilna testa; app bundluje (expo-doctor 21/21).
