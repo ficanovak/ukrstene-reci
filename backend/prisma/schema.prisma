@@ -141,6 +141,14 @@ model User {
 
   progress UserProgress[]
 
+  // A user's identity is (authProvider, externalId). Both login paths always
+  // set externalId (anon → deviceId, social → provider subject), so this
+  // composite unique is the upsert key that prevents concurrent find-or-create
+  // from inserting duplicate rows for the same identity. NOTE: externalId is
+  // nullable and Postgres treats NULLs as DISTINCT, so this constraint does not
+  // block multiple null-externalId rows — that's acceptable here precisely
+  // because neither login path ever leaves externalId null.
+  @@unique([authProvider, externalId])
   @@map("users")
 }
 

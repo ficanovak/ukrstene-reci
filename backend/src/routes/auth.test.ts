@@ -132,6 +132,37 @@ describe("auth routes", () => {
       });
       expect(res.statusCode).toBe(400);
     });
+
+    it("is concurrency-safe: many simultaneous calls with the same deviceId create exactly one user", async () => {
+      // Regression test for the find-then-create race: without a unique
+      // constraint + upsert, concurrent anonLogin calls for one deviceId raced
+      // and inserted duplicate User rows, splitting the player's progress.
+      const deviceId = "device-race";
+      const responses = await Promise.all(
+        Array.from({ length: 8 }, () =>
+          app.inject({
+            method: "POST",
+            url: "/v1/auth/anon",
+            payload: { deviceId },
+          }),
+        ),
+      );
+
+      for (const res of responses) {
+        expect(res.statusCode).toBe(200);
+      }
+
+      // Every concurrent call must resolve to the SAME user id.
+      const userIds = responses.map((r) => r.json().userId as string);
+      const uniqueIds = new Set(userIds);
+      expect(uniqueIds.size).toBe(1);
+
+      // And exactly one row must exist in the DB for that identity.
+      const count = await prisma.user.count({
+        where: { authProvider: "anon", externalId: deviceId },
+      });
+      expect(count).toBe(1);
+    });
   });
 
   describe("POST /v1/auth/social", () => {
@@ -276,6 +307,119 @@ describe("auth routes", () => {
       expect(rows[0].stars).toBe(5);
     });
 
+    it("resolves conflicts the OTHER way: social's better result is kept over anon's", async () => {
+      // Reverse direction of the previous test: the social user already holds
+      // the stronger result, so migration must NOT overwrite it with the anon's
+      // weaker one.
+      const { levelA } = await seedLevels();
+
+      const socialRes = await app.inject({
+        method: "POST",
+        url: "/v1/auth/social",
+        payload: { provider: "apple", token: "rev-conflict" },
+      });
+      const socialUserId = socialRes.json().userId;
+      await prisma.userProgress.create({
+        data: {
+          userId: socialUserId,
+          levelId: levelA,
+          mode: "basic",
+          stars: 5,
+          score: 200,
+          mistakes: 0,
+          hintsUsed: 0,
+        },
+      });
+
+      // Anon has a WORSE 3-star result for the same (levelA, basic).
+      const anon = await prisma.user.create({
+        data: { authProvider: "anon", externalId: "anon-rev-conflict" },
+      });
+      await prisma.userProgress.create({
+        data: {
+          userId: anon.id,
+          levelId: levelA,
+          mode: "basic",
+          stars: 3,
+          score: 50,
+          mistakes: 5,
+          hintsUsed: 3,
+        },
+      });
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/v1/auth/social",
+        payload: {
+          provider: "apple",
+          token: "rev-conflict",
+          anonUserId: anon.id,
+        },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().userId).toBe(socialUserId);
+
+      const rows = await prisma.userProgress.findMany({
+        where: { userId: socialUserId, levelId: levelA, mode: "basic" },
+      });
+      expect(rows).toHaveLength(1);
+      expect(rows[0].stars).toBe(5);
+      expect(rows[0].score).toBe(200);
+    });
+
+    it("breaks star ties by keeping the higher score", async () => {
+      const { levelA } = await seedLevels();
+
+      const socialRes = await app.inject({
+        method: "POST",
+        url: "/v1/auth/social",
+        payload: { provider: "apple", token: "tiebreak" },
+      });
+      const socialUserId = socialRes.json().userId;
+      // Social: 3 stars, score 120.
+      await prisma.userProgress.create({
+        data: {
+          userId: socialUserId,
+          levelId: levelA,
+          mode: "basic",
+          stars: 3,
+          score: 120,
+          mistakes: 0,
+          hintsUsed: 0,
+        },
+      });
+
+      // Anon: SAME 3 stars, but HIGHER score 150 → anon should win on tiebreak.
+      const anon = await prisma.user.create({
+        data: { authProvider: "anon", externalId: "anon-tiebreak" },
+      });
+      await prisma.userProgress.create({
+        data: {
+          userId: anon.id,
+          levelId: levelA,
+          mode: "basic",
+          stars: 3,
+          score: 150,
+          mistakes: 0,
+          hintsUsed: 0,
+        },
+      });
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/v1/auth/social",
+        payload: { provider: "apple", token: "tiebreak", anonUserId: anon.id },
+      });
+      expect(res.statusCode).toBe(200);
+
+      const rows = await prisma.userProgress.findMany({
+        where: { userId: socialUserId, levelId: levelA, mode: "basic" },
+      });
+      expect(rows).toHaveLength(1);
+      expect(rows[0].stars).toBe(3);
+      expect(rows[0].score).toBe(150);
+    });
+
     it("is idempotent: a nonexistent anonUserId just logs in the social user", async () => {
       const res = await app.inject({
         method: "POST",
@@ -319,11 +463,106 @@ describe("auth routes", () => {
       expect(social.currentScript).toBe("lat");
       expect(social.theme).toBe("dark");
     });
+
+    it("does not clobber prefs the social user has already set", async () => {
+      // The social user already has currentLanguageId + theme; the anon user has
+      // DIFFERENT values plus a pref the social user lacks (currentScript). Only
+      // the null social field may be filled; existing values stay untouched.
+      const { levelA } = await seedLevels();
+      const level = await prisma.level.findUniqueOrThrow({
+        where: { id: levelA },
+      });
+
+      const socialRes = await app.inject({
+        method: "POST",
+        url: "/v1/auth/social",
+        payload: { provider: "apple", token: "prefs-keep" },
+      });
+      const socialUserId = socialRes.json().userId;
+      await prisma.user.update({
+        where: { id: socialUserId },
+        data: { currentLanguageId: level.languageId, theme: "light" },
+      });
+
+      const anon = await prisma.user.create({
+        data: {
+          authProvider: "anon",
+          externalId: "anon-prefs-keep",
+          // A different language id (use the social user's own id string just
+          // as an arbitrary distinct value the migration must NOT copy over).
+          currentLanguageId: socialUserId,
+          currentScript: "cyr",
+          theme: "dark",
+        },
+      });
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/v1/auth/social",
+        payload: {
+          provider: "apple",
+          token: "prefs-keep",
+          anonUserId: anon.id,
+        },
+      });
+      expect(res.statusCode).toBe(200);
+
+      const social = await prisma.user.findUniqueOrThrow({
+        where: { id: socialUserId },
+      });
+      // Already-set fields are preserved (NOT overwritten by the anon's values).
+      expect(social.currentLanguageId).toBe(level.languageId);
+      expect(social.theme).toBe("light");
+      // The one field the social user left null gets filled from the anon user.
+      expect(social.currentScript).toBe("cyr");
+    });
   });
 
   describe("app.authenticate decorator", () => {
     it("is exposed for protected routes (tasks 3.3/3.4)", () => {
       expect(typeof app.authenticate).toBe("function");
+    });
+
+    it("enforces auth on a guarded route: rejects missing/garbage tokens, accepts a valid one", async () => {
+      // Register a throwaway protected route guarded by the real
+      // app.authenticate preHandler, then exercise it for real (not just a
+      // typeof check).
+      const guarded = buildApp({ prisma, socialVerifier: mock.verifier });
+      guarded.get(
+        "/protected-probe",
+        { preHandler: guarded.authenticate },
+        async (request) => ({ sub: (request.user as { sub: string }).sub }),
+      );
+      await guarded.ready();
+
+      try {
+        // No token → 401.
+        const noToken = await guarded.inject({
+          method: "GET",
+          url: "/protected-probe",
+        });
+        expect(noToken.statusCode).toBe(401);
+
+        // Malformed bearer → 401.
+        const garbage = await guarded.inject({
+          method: "GET",
+          url: "/protected-probe",
+          headers: { authorization: "Bearer garbage" },
+        });
+        expect(garbage.statusCode).toBe(401);
+
+        // Valid signed token → 200, and the JWT payload is exposed on req.user.
+        const token = guarded.jwt.sign({ sub: "user-123" });
+        const ok = await guarded.inject({
+          method: "GET",
+          url: "/protected-probe",
+          headers: { authorization: `Bearer ${token}` },
+        });
+        expect(ok.statusCode).toBe(200);
+        expect(ok.json().sub).toBe("user-123");
+      } finally {
+        await guarded.close();
+      }
     });
   });
 });

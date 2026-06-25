@@ -28,18 +28,31 @@ export class InvalidSocialTokenError extends Error {
  * device always maps back to the same anon user (progress survives app
  * restarts before the player signs in). Returns the User row; the route signs
  * the JWT.
+ *
+ * SECURITY (known limitation): the client-supplied `deviceId` is trusted
+ * verbatim as the identity — there is no signing or device attestation. A
+ * forged or guessed deviceId therefore grants access to that anon account's
+ * progress, and could be migrated into an attacker's social account at link
+ * time. This is largely inherent to device-id anonymous auth, but a future
+ * hardening could issue signed device tokens (e.g. a server-minted, HMAC'd
+ * device secret returned on first contact and required thereafter) so the
+ * server can verify the deviceId was actually issued by us. NOT implemented
+ * here — documented as accepted risk for the anonymous tier.
+ *
+ * Uses `upsert` on the (authProvider, externalId) composite unique rather than
+ * find-then-create, so concurrent calls with the SAME deviceId can never insert
+ * duplicate rows (a P2002 unique violation collapses into the existing row
+ * instead of creating a second user that would split the player's progress).
  */
 export async function anonLogin(
   prisma: PrismaClient,
   deviceId: string,
 ): Promise<User> {
-  const existing = await prisma.user.findFirst({
-    where: { authProvider: "anon", externalId: deviceId },
-  });
-  if (existing) return existing;
-
-  return prisma.user.create({
-    data: { authProvider: "anon", externalId: deviceId },
+  return prisma.user.upsert({
+    where: { authProvider_externalId: { authProvider: "anon", externalId: deviceId } },
+    create: { authProvider: "anon", externalId: deviceId },
+    // Identity row already exists: return it unchanged (no fields to update).
+    update: {},
   });
 }
 
@@ -63,18 +76,23 @@ export async function socialLogin(
     );
   }
 
-  // Find-or-create the social user by (authProvider, externalId).
-  let socialUser = await prisma.user.findFirst({
-    where: { authProvider: params.provider, externalId: identity.externalId },
-  });
-  if (!socialUser) {
-    socialUser = await prisma.user.create({
-      data: {
+  // Find-or-create the social user by (authProvider, externalId). `upsert` on
+  // the composite unique makes this race-safe: concurrent first logins for the
+  // same social identity collapse onto one row instead of inserting duplicates
+  // that would split the player's progress.
+  const socialUser = await prisma.user.upsert({
+    where: {
+      authProvider_externalId: {
         authProvider: params.provider,
         externalId: identity.externalId,
       },
-    });
-  }
+    },
+    create: {
+      authProvider: params.provider,
+      externalId: identity.externalId,
+    },
+    update: {},
+  });
 
   // Migrate from the anon user when requested, it exists, and it is a different
   // user than the social account. Anything else (missing/already-migrated/same
