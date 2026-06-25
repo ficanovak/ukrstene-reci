@@ -9,13 +9,12 @@
  * ─────────────────────────────────────────────────────────────────────────
  * DICTIONARY LOADING (documented choice)
  * ─────────────────────────────────────────────────────────────────────────
- * The CLI loads candidate words from the DB `Dictionary` table (filtered to the
- * language + script) and joins each to ONE of its `Clue` rows to produce a
- * `DictionaryEntry { word, frequency, clue }`. We take the first clue per word
- * (deterministic by clue id); words with no clue still generate but get the
- * pipeline's placeholder clue. Per Task 2.4's scaling note, the full DB
- * dictionary can be passed straight through — `generateLevel` samples/caps the
- * candidate pool internally, so a large corpus is fine here.
+ * The candidate words come from the DB `Dictionary` table (filtered to the
+ * language + script) joined to ONE `Clue` row each. That DB→DictionaryEntry
+ * mapping is shared with the admin generate route and lives in one place:
+ * `loadDictionaryForLanguage` (src/jobs/loadDictionary.ts). Per Task 2.4's
+ * scaling note, the full DB dictionary can be passed straight through —
+ * `generateLevel` samples/caps the candidate pool internally.
  *
  * Usage:
  *   tsx src/jobs/runBulkGenerate.ts \
@@ -34,9 +33,9 @@ import {
   bulkGenerate,
   type BulkGenerateResult,
 } from "../generator/bulkGenerate.js";
-import { type DictionaryEntry } from "../generator/generateLevel.js";
-import { type Clue } from "../generator/gridData.js";
 import { type Script } from "../generator/graphemes.js";
+
+import { loadDictionaryForLanguage } from "./loadDictionary.js";
 
 interface CliArgs {
   language: string;
@@ -113,35 +112,10 @@ async function resolveLanguageId(idOrCode: string): Promise<string> {
   throw new Error(`No Language found for id-or-code '${idOrCode}'`);
 }
 
-/**
- * Loads the candidate dictionary for (languageId, script) from the DB, joining
- * each word to its first clue. See the DICTIONARY LOADING note above.
- */
-async function loadDictionary(
-  languageId: string,
-  script: Script,
-): Promise<DictionaryEntry[]> {
-  const words = await prisma.dictionary.findMany({
-    where: { languageId, script },
-    include: { clues: { orderBy: { id: "asc" }, take: 1 } },
-    orderBy: { id: "asc" },
-  });
-
-  return words.map((w): DictionaryEntry => {
-    const dbClue = w.clues[0];
-    const clue: Clue = dbClue
-      ? dbClue.type === "image"
-        ? { type: "image", imageRef: dbClue.content }
-        : { type: "text", text: dbClue.content }
-      : { type: "text", text: "" };
-    return { word: w.word, frequency: w.frequency, clue };
-  });
-}
-
 async function main(): Promise<BulkGenerateResult> {
   const args = parseArgs(process.argv.slice(2));
   const languageId = await resolveLanguageId(args.language);
-  const dictionary = await loadDictionary(languageId, args.script);
+  const dictionary = await loadDictionaryForLanguage(prisma, languageId, args.script);
 
   console.log(
     `[bulkGenerate] language=${args.language} (${languageId}) script=${args.script} mode=${args.mode} ` +
