@@ -11,6 +11,11 @@
     "dev:backend": "npm -w backend run dev",
     "build:backend": "npm -w backend run build",
     "test:backend": "npm -w backend run test",
+    "test:mobile": "npm -w mobile run test",
     "start:mobile": "npm -w mobile run start"
+  },
+  "overrides": {
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
   }
 }
