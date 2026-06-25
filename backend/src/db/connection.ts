@@ -19,7 +19,11 @@ export const DEFAULT_SCHEMA = 'ukrstene';
 export function parseSchemaFromUrl(url: string | undefined): string {
   if (!url) return DEFAULT_SCHEMA;
   try {
-    return new URL(url).searchParams.get('schema') ?? DEFAULT_SCHEMA;
+    // searchParams.get returns "" (not null) for a trailing `?schema=`, so the
+    // `??` fallback alone would let an empty/whitespace schema through. Treat
+    // empty/whitespace-only as absent.
+    const schema = new URL(url).searchParams.get('schema');
+    return schema && schema.trim() ? schema : DEFAULT_SCHEMA;
   } catch {
     return DEFAULT_SCHEMA;
   }

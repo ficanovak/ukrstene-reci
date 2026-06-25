@@ -17,6 +17,14 @@ describe('parseSchemaFromUrl', () => {
     expect(parseSchemaFromUrl('postgres://u:p@host:5432/db')).toBe(DEFAULT_SCHEMA);
   });
 
+  it('falls back to the default when the param is present but empty', () => {
+    expect(parseSchemaFromUrl('postgres://u:p@host:5432/db?schema=')).toBe(DEFAULT_SCHEMA);
+  });
+
+  it('falls back to the default when the param is whitespace-only', () => {
+    expect(parseSchemaFromUrl('postgres://u:p@host:5432/db?schema=%20%20')).toBe(DEFAULT_SCHEMA);
+  });
+
   it('falls back to the default when the URL is undefined', () => {
     expect(parseSchemaFromUrl(undefined)).toBe(DEFAULT_SCHEMA);
   });

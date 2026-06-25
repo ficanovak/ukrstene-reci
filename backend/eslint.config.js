@@ -8,7 +8,7 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    files: ["src/**/*.ts"],
+    files: ["src/**/*.ts", "test/**/*.ts", "prisma.config.ts", "vitest.config.ts"],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: "module",
