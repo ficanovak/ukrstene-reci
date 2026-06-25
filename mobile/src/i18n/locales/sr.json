@@ -20,5 +20,17 @@
   "dark": "Tamna",
   "system": "Sistemska",
   "selectLanguage": "Izaberi jezik",
-  "stars": "Zvezdice"
+  "stars": "Zvezdice",
+  "back": "Nazad",
+  "appTitle": "Ukrštene reči",
+  "comingSoon": "Uskoro",
+  "account": "Nalog",
+  "checkMode": "Provera",
+  "script.cyrillic": "Ćirilica",
+  "script.latin": "Latinica",
+  "lang.sr": "Srpski",
+  "lang.hr": "Hrvatski",
+  "lang.bs": "Bosanski",
+  "lang.me": "Crnogorski",
+  "lang.mk": "Makedonski"
 }

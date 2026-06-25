@@ -20,5 +20,17 @@
   "dark": "Tamna",
   "system": "Sustavska",
   "selectLanguage": "Odaberi jezik",
-  "stars": "Zvjezdice"
+  "stars": "Zvjezdice",
+  "back": "Natrag",
+  "appTitle": "Križaljke",
+  "comingSoon": "Uskoro",
+  "account": "Račun",
+  "checkMode": "Provjera",
+  "script.cyrillic": "Ćirilica",
+  "script.latin": "Latinica",
+  "lang.sr": "Srpski",
+  "lang.hr": "Hrvatski",
+  "lang.bs": "Bosanski",
+  "lang.me": "Crnogorski",
+  "lang.mk": "Makedonski"
 }

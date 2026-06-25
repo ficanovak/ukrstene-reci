@@ -20,5 +20,17 @@
   "dark": "Темна",
   "system": "Системска",
   "selectLanguage": "Избери јазик",
-  "stars": "Ѕвезди"
+  "stars": "Ѕвезди",
+  "back": "Назад",
+  "appTitle": "Вкрстени зборови",
+  "comingSoon": "Наскоро",
+  "account": "Сметка",
+  "checkMode": "Проверка",
+  "script.cyrillic": "Кирилица",
+  "script.latin": "Латиница",
+  "lang.sr": "Српски",
+  "lang.hr": "Хрватски",
+  "lang.bs": "Босански",
+  "lang.me": "Црногорски",
+  "lang.mk": "Македонски"
 }

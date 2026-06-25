@@ -1,98 +1,69 @@
-import * as Device from 'expo-device';
-import { Platform, StyleSheet } from 'react-native';
+/**
+ * Home screen (Task 4.5).
+ *
+ * The app's main hub: title, the two game modes (Basic / Advanced → routes to
+ * `game/[mode]`), a Continue affordance, and a Settings entry. Placeholder
+ * styling that respects the active theme + language. Real gameplay arrives in
+ * later phases.
+ */
+import { useRouter } from 'expo-router';
+import { useTranslation } from 'react-i18next';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { AnimatedIcon } from '@/components/animated-icon';
-import { HintRow } from '@/components/hint-row';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { WebBadge } from '@/components/web-badge';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
-
-function getDevMenuHint() {
-  if (Platform.OS === 'web') {
-    return <ThemedText type="small">use browser devtools</ThemedText>;
-  }
-  if (Device.isDevice) {
-    return (
-      <ThemedText type="small">
-        shake device or press <ThemedText type="code">m</ThemedText> in terminal
-      </ThemedText>
-    );
-  }
-  const shortcut = Platform.OS === 'android' ? 'cmd+m (or ctrl+m)' : 'cmd+d';
-  return (
-    <ThemedText type="small">
-      press <ThemedText type="code">{shortcut}</ThemedText>
-    </ThemedText>
-  );
-}
+import { Button } from '@/components/ui/Button';
+import { typography, useTheme } from '@/theme';
 
 export default function HomeScreen() {
+  const { colors } = useTheme();
+  const { t } = useTranslation();
+  const router = useRouter();
+
   return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <ThemedView style={styles.heroSection}>
-          <AnimatedIcon />
-          <ThemedText type="title" style={styles.title}>
-            Welcome to&nbsp;Expo
-          </ThemedText>
-        </ThemedView>
+    <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}>
+      <View style={styles.content}>
+        <View style={styles.header}>
+          <Text style={[styles.title, { color: colors.primary }]}>
+            {t('appTitle')}
+          </Text>
+        </View>
 
-        <ThemedText type="code" style={styles.code}>
-          get started
-        </ThemedText>
-
-        <ThemedView type="backgroundElement" style={styles.stepContainer}>
-          <HintRow
-            title="Try editing"
-            hint={<ThemedText type="code">src/app/index.tsx</ThemedText>}
+        <View style={styles.actions}>
+          <Button
+            label={t('mode.basic')}
+            onPress={() => router.push('/game/basic')}
           />
-          <HintRow title="Dev tools" hint={getDevMenuHint()} />
-          <HintRow
-            title="Fresh start"
-            hint={<ThemedText type="code">npm run reset-project</ThemedText>}
+          <Button
+            label={t('mode.advanced')}
+            onPress={() => router.push('/game/advanced')}
           />
-        </ThemedView>
+          <Button
+            label={t('continue')}
+            variant="secondary"
+            onPress={() => router.push('/game/basic')}
+          />
+        </View>
 
-        {Platform.OS === 'web' && <WebBadge />}
-      </SafeAreaView>
-    </ThemedView>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => router.push('/settings')}
+          style={({ pressed }) => [styles.settings, { opacity: pressed ? 0.7 : 1 }]}
+        >
+          <Text style={[styles.settingsLabel, { color: colors.text }]}>
+            {t('settings')}
+          </Text>
+        </Pressable>
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    flexDirection: 'row',
-  },
-  safeArea: {
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    alignItems: 'center',
-    gap: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.three,
-    maxWidth: MaxContentWidth,
-  },
-  heroSection: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.four,
-  },
-  title: {
-    textAlign: 'center',
-  },
-  code: {
-    textTransform: 'uppercase',
-  },
-  stepContainer: {
-    gap: Spacing.three,
-    alignSelf: 'stretch',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.four,
-    borderRadius: Spacing.four,
-  },
+  safe: { flex: 1 },
+  content: { flex: 1, padding: 24, justifyContent: 'space-between' },
+  header: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  title: { ...typography.title, fontSize: 34, lineHeight: 40, textAlign: 'center' },
+  actions: { gap: 14 },
+  settings: { alignItems: 'center', paddingVertical: 16, marginTop: 16 },
+  settingsLabel: { ...typography.label },
 });
