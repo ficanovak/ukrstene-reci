@@ -66,6 +66,13 @@ import {
   type GameState,
 } from '@/game/engine';
 import type { GridData, LetterCell } from '@/game/gridData.types';
+import {
+  applyLetterHint,
+  applyWordHint,
+  createHintState,
+  freePerLevelProvider,
+  type HintState,
+} from '@/game/hints';
 import { useLevel } from '@/game/useLevel';
 import { FALLBACK_LANGUAGE, type LanguageCode } from '@/i18n';
 import { useSettings, type ScriptChoice } from '@/store/settings';
@@ -104,7 +111,37 @@ function BasicGameBoard({
   const showCheck = checkMode === 'auto';
 
   const [state, setState] = useState<GameState>(() => createGameState(grid));
+  // Hint state for this level: 2 free per level (1 word + 1 letter), via the
+  // provider so a future inventory/ads source drops in without changing this
+  // screen. `hintsUsed` flows into the eventual score (Task 7.3).
+  const [hints, setHints] = useState<HintState>(() =>
+    createHintState(freePerLevelProvider()),
+  );
   const solved = isSolved(state);
+
+  const hasActiveWord = state.activeWordId !== null;
+
+  /** Word hint: reveal the active word (fill every cell with its solution). */
+  const handleWordHint = useCallback(() => {
+    // Compute both transitions from the latest render state, then commit both.
+    // The button is only enabled when usable, so we read from render scope.
+    const res = applyWordHint(state, hints, state.activeWordId);
+    setState(res.game);
+    setHints(res.hints);
+  }, [state, hints]);
+
+  /**
+   * Letter hint: reveal ONE cell — the cursor cell of the active word (Basic's
+   * "current" cell). Fills it with the correct grapheme.
+   */
+  const handleLetterHint = useCallback(() => {
+    const word = grid.words.find((w) => w.id === state.activeWordId);
+    const coord = word?.cells[state.cursorIndex];
+    if (!coord) return;
+    const res = applyLetterHint(state, hints, coord.row, coord.col);
+    setState(res.game);
+    setHints(res.hints);
+  }, [grid, state, hints]);
 
   /**
    * Tap a letter cell: select a word for it and park the cursor on the cell.
@@ -188,6 +225,24 @@ function BasicGameBoard({
             </Text>
           ) : null}
         </View>
+      </View>
+
+      {/* ── Hint bar (PRD §7.2: 1 word + 1 letter, once each) ───────────── */}
+      <View style={styles.hintBar}>
+        <Button
+          label={t('hintWord')}
+          variant="secondary"
+          onPress={handleWordHint}
+          disabled={!hints.wordRemaining || !hasActiveWord}
+          style={styles.hintButton}
+        />
+        <Button
+          label={t('hintLetter')}
+          variant="secondary"
+          onPress={handleLetterHint}
+          disabled={!hints.letterRemaining || !hasActiveWord}
+          style={styles.hintButton}
+        />
       </View>
 
       {/* ── Board ───────────────────────────────────────────────────────── */}
@@ -276,6 +331,14 @@ const styles = StyleSheet.create({
   title: { ...typography.heading, flexShrink: 1, textAlign: 'center' },
   stats: { alignItems: 'flex-end' },
   stat: { fontFamily: fontFamily.bold, fontSize: 13 },
+  hintBar: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingBottom: 4,
+  },
+  hintButton: { flex: 1, paddingVertical: 8, paddingHorizontal: 8 },
   boardArea: {
     flex: 1,
     alignItems: 'center',

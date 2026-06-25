@@ -233,6 +233,38 @@ describe('AdvancedGame', () => {
     expect(mistakeCount()).toBe(1);
   });
 
+  it('letter hint locks the first unsolved cell and disables after one use', async () => {
+    await renderScreen();
+    // First unsolved cell in word reading order is (1,1) M (MORE across first).
+    expect(isLocked(1, 1)).toBe(false);
+    await press(screen.getByText('Pomoć: slovo'));
+    // Revealed + locked with its solution.
+    expect(isLocked(1, 1)).toBe(true);
+    expect(cellText(1, 1)).toBe('M');
+    // Disabled after one use.
+    expect(
+      screen.getByText('Pomoć: slovo').parent?.props.accessibilityState?.disabled,
+    ).toBe(true);
+  });
+
+  it('word hint locks every cell of the first unsolved word and disables after use', async () => {
+    await renderScreen();
+    await press(screen.getByText('Pomoć: reč'));
+    // MORE (across) is the first word → all four cells locked + correct.
+    for (const [r, c, g] of [
+      [1, 1, 'M'],
+      [1, 2, 'O'],
+      [1, 3, 'R'],
+      [1, 4, 'E'],
+    ] as const) {
+      expect(isLocked(r, c)).toBe(true);
+      expect(cellText(r, c)).toBe(g);
+    }
+    expect(
+      screen.getByText('Pomoć: reč').parent?.props.accessibilityState?.disabled,
+    ).toBe(true);
+  });
+
   it('driving the full solution (correct letters per round) shows the solved overlay', async () => {
     await renderScreen();
     expect(screen.queryByTestId('solved-overlay')).toBeNull();

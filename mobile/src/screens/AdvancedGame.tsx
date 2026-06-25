@@ -69,7 +69,15 @@ import {
   unplaceLetter,
   type AdvancedState,
 } from '@/game/advanced';
-import type { GridData, LetterCell } from '@/game/gridData.types';
+import type { Coord, GridData, LetterCell } from '@/game/gridData.types';
+import {
+  applyLetterHint,
+  applyWordHint,
+  createHintState,
+  freePerLevelProvider,
+  lockRevealed,
+  type HintState,
+} from '@/game/hints';
 import { useLevel } from '@/game/useLevel';
 import { FALLBACK_LANGUAGE, type LanguageCode } from '@/i18n';
 import { useSettings } from '@/store/settings';
@@ -87,6 +95,38 @@ function letterCellAt(grid: GridData, row: number, col: number): LetterCell | un
   return grid.cells.find(
     (c): c is LetterCell => c.kind === 'letter' && c.row === row && c.col === col,
   );
+}
+
+/** True iff (row,col) is still unsolved: a letter cell that is not yet locked. */
+function isUnsolvedCell(state: AdvancedState, row: number, col: number): boolean {
+  if (state.locked.has(cellKey(row, col))) return false;
+  return letterCellAt(state.base.grid, row, col) !== undefined;
+}
+
+/**
+ * Letter-hint target in Advanced: the FIRST still-unsolved (unlocked) cell on
+ * the board, scanned in `grid.words` reading order so it sits on a word the
+ * player is plausibly working on. Returns null when everything is solved.
+ */
+function firstUnsolvedCell(state: AdvancedState): Coord | null {
+  for (const word of state.base.grid.words) {
+    for (const c of word.cells) {
+      if (isUnsolvedCell(state, c.row, c.col)) return { row: c.row, col: c.col };
+    }
+  }
+  return null;
+}
+
+/**
+ * Word-hint target in Advanced: the FIRST word that still has any unsolved
+ * (unlocked) cell — i.e. the word containing {@link firstUnsolvedCell}. Returns
+ * null when the board is solved.
+ */
+function firstUnsolvedWordId(state: AdvancedState): string | null {
+  for (const word of state.base.grid.words) {
+    if (word.cells.some((c) => isUnsolvedCell(state, c.row, c.col))) return word.id;
+  }
+  return null;
 }
 
 /**
@@ -185,6 +225,11 @@ function AdvancedGameBoard({
     createAdvancedState(grid, seed),
   );
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  // Hint state: 2 free per level (1 word + 1 letter), via the provider so a
+  // future inventory/ads source drops in unchanged. `hintsUsed` feeds the score.
+  const [hints, setHints] = useState<HintState>(() =>
+    createHintState(freePerLevelProvider()),
+  );
 
   // Drives the post-submit flash (§6.4). `kind` decides the colour; `id` re-fires.
   const [flash, setFlash] = useState<{ id: number; kind: 'correct' | 'wrong' | null }>(
@@ -265,6 +310,37 @@ function AdvancedGameBoard({
     }).start();
   }, [state, paletteSlide]);
 
+  /**
+   * Word hint: reveal a still-unsolved word — write the correct graphemes into
+   * its cells (replacing any tentative wrong letters there) and LOCK them, so
+   * they count as solved exactly like a submit success (PRD §7.2 / §6.2).
+   */
+  const handleWordHint = useCallback(() => {
+    const wordId = firstUnsolvedWordId(state);
+    if (wordId === null) return;
+    const res = applyWordHint(state.base, hints, wordId);
+    if (res.hints === hints) return; // rejected (no remaining) — no-op
+    const word = grid.words.find((w) => w.id === wordId);
+    const coords = word ? word.cells : [];
+    setState((prev) => lockRevealed({ ...prev, base: res.game }, res.game, coords));
+    setHints(res.hints);
+    setSelectedIndex(null);
+  }, [state, hints, grid]);
+
+  /**
+   * Letter hint: reveal ONE cell — the first still-unsolved cell (see
+   * `firstUnsolvedCell`). Write its correct grapheme and LOCK it.
+   */
+  const handleLetterHint = useCallback(() => {
+    const target = firstUnsolvedCell(state);
+    if (target === null) return;
+    const res = applyLetterHint(state.base, hints, target.row, target.col);
+    if (res.hints === hints) return; // rejected — no-op
+    setState((prev) => lockRevealed({ ...prev, base: res.game }, res.game, [target]));
+    setHints(res.hints);
+    setSelectedIndex(null);
+  }, [state, hints]);
+
   const goNext = useCallback(() => {
     if (router.canGoBack()) router.back();
     else router.replace('/');
@@ -313,6 +389,24 @@ function AdvancedGameBoard({
             {t('mistakes')}: {state.mistakes}
           </Text>
         </View>
+      </View>
+
+      {/* ── Hint bar (PRD §7.2: 1 word + 1 letter, once each) ───────────── */}
+      <View style={styles.hintBar}>
+        <Button
+          label={t('hintWord')}
+          variant="secondary"
+          onPress={handleWordHint}
+          disabled={!hints.wordRemaining || solved}
+          style={styles.hintButton}
+        />
+        <Button
+          label={t('hintLetter')}
+          variant="secondary"
+          onPress={handleLetterHint}
+          disabled={!hints.letterRemaining || solved}
+          style={styles.hintButton}
+        />
       </View>
 
       {/* ── Board ───────────────────────────────────────────────────────── */}
@@ -412,6 +506,14 @@ const styles = StyleSheet.create({
   title: { ...typography.heading, flexShrink: 1, textAlign: 'center' },
   stats: { alignItems: 'flex-end' },
   stat: { fontFamily: fontFamily.bold, fontSize: 13 },
+  hintBar: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingBottom: 4,
+  },
+  hintButton: { flex: 1, paddingVertical: 8, paddingHorizontal: 8 },
   boardArea: {
     flex: 1,
     alignItems: 'center',

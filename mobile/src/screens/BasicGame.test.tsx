@@ -204,6 +204,40 @@ describe('BasicGame', () => {
     expect(isActive(1, 4)).toBe(false); // MORE no longer active
   });
 
+  it('word hint reveals the active word and disables after one use', async () => {
+    await renderScreen();
+    // Activate MORE then use the word hint.
+    await tapCell(1, 1);
+    const wordHint = screen.getByText('Pomoć: reč');
+    await press(wordHint);
+
+    // All MORE cells now show their solution.
+    expect(cellText(1, 1)).toBe('M');
+    expect(cellText(1, 2)).toBe('O');
+    expect(cellText(1, 3)).toBe('R');
+    expect(cellText(1, 4)).toBe('E');
+
+    // The button is disabled (once per level): its Pressable is disabled.
+    expect(screen.getByText('Pomoć: reč').parent?.props.accessibilityState?.disabled).toBe(true);
+  });
+
+  it('letter hint reveals the cursor cell and disables after one use', async () => {
+    await renderScreen();
+    await tapCell(1, 1); // cursor on (1,1), solution 'M'
+    await press(screen.getByText('Pomoć: slovo'));
+    expect(cellText(1, 1)).toBe('M');
+    expect(
+      screen.getByText('Pomoć: slovo').parent?.props.accessibilityState?.disabled,
+    ).toBe(true);
+  });
+
+  it('hint buttons are disabled until a word is active', async () => {
+    await renderScreen();
+    // No active word yet → both hint buttons disabled.
+    expect(screen.getByText('Pomoć: reč').parent?.props.accessibilityState?.disabled).toBe(true);
+    expect(screen.getByText('Pomoć: slovo').parent?.props.accessibilityState?.disabled).toBe(true);
+  });
+
   it('solving the puzzle shows the solved overlay', async () => {
     await renderScreen();
     expect(screen.queryByTestId('solved-overlay')).toBeNull();

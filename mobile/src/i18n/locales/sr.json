@@ -11,6 +11,8 @@
   "score": "Rezultat",
   "mistakes": "Greške",
   "hint": "Pomoć",
+  "hintWord": "Pomoć: reč",
+  "hintLetter": "Pomoć: slovo",
   "next": "Sledeće",
   "solved": "Rešeno!",
   "submit": "Potvrdi",
