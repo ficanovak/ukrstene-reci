@@ -78,6 +78,8 @@ import { FALLBACK_LANGUAGE, type LanguageCode } from '@/i18n';
 import { useSettings, type ScriptChoice } from '@/store/settings';
 import { fontFamily, typography, useTheme } from '@/theme';
 
+import { Results } from './Results';
+
 /** Map the settings `ScriptChoice` onto the keyboard's `Script` ('lat'|'cyr'). */
 function keyboardScript(script: ScriptChoice): Script {
   return script === 'cyrillic' ? 'cyr' : 'lat';
@@ -94,11 +96,15 @@ function letterCellAt(grid: GridData, row: number, col: number): LetterCell | un
 function BasicGameBoard({
   grid,
   levelNumber,
+  levelId,
+  difficultyBand,
   language,
   script,
 }: {
   grid: GridData;
   levelNumber: number;
+  levelId: string;
+  difficultyBand: number;
   language: LanguageCode;
   script: ScriptChoice;
 }) {
@@ -266,19 +272,16 @@ function BasicGameBoard({
         />
       </View>
 
-      {/* ── Solved overlay ──────────────────────────────────────────────── */}
+      {/* ── Results overlay (Task 7.3): stars/score/save/next ───────────── */}
       {solved ? (
-        <View testID="solved-overlay" style={styles.overlay}>
-          <View style={[styles.modal, { backgroundColor: colors.background, borderColor: colors.primary }]}>
-            <Text style={[styles.solvedTitle, { color: colors.primary }]}>
-              {t('solved')}
-            </Text>
-            <Text style={[styles.solvedStat, { color: colors.text }]}>
-              {t('mistakes')}: {state.mistakes}
-            </Text>
-            <Button label={t('next')} onPress={goNext} style={styles.nextButton} />
-          </View>
-        </View>
+        <Results
+          levelId={levelId}
+          mode="basic"
+          difficultyBand={difficultyBand}
+          mistakes={state.mistakes}
+          hintsUsed={hints.hintsUsed}
+          onNext={goNext}
+        />
       ) : null}
     </SafeAreaView>
   );
@@ -307,6 +310,8 @@ export function BasicGame() {
     <BasicGameBoard
       grid={load.level}
       levelNumber={load.levelNumber}
+      levelId={load.levelId}
+      difficultyBand={load.difficultyBand}
       language={resolvedLanguage}
       script={script}
     />
@@ -346,27 +351,4 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   keyboardArea: { paddingBottom: 4 },
-  overlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#00000066',
-    paddingHorizontal: 24,
-  },
-  modal: {
-    width: '100%',
-    maxWidth: 360,
-    borderRadius: 18,
-    borderWidth: 2,
-    padding: 24,
-    alignItems: 'center',
-    gap: 12,
-  },
-  solvedTitle: { ...typography.title },
-  solvedStat: { ...typography.heading },
-  nextButton: { marginTop: 8, alignSelf: 'stretch' },
 });

@@ -49,6 +49,16 @@ export type LevelLoadState =
       level: GridData;
       /** Display level number (cache level number, or 1 for the sample). */
       levelNumber: number;
+      /**
+       * Stable level identity for progress persistence (Task 7.3): the cached
+       * level's `id`, or {@link SAMPLE_LEVEL_ID} for the bundled fallback.
+       */
+      levelId: string;
+      /**
+       * Difficulty band 1..NUM_BANDS, fed into `scoreLevel` for the star rating.
+       * The bundled sample has no server band, so it defaults to 1 (easiest).
+       */
+      difficultyBand: number;
       /** Whether this came from the cache or the bundled sample fallback. */
       source: LevelSource;
     };
@@ -65,12 +75,20 @@ function scriptColumn(script: ScriptChoice): string {
   return script === 'cyrillic' ? 'cyr' : 'lat';
 }
 
-/** The bundled fallback as a ready state (level number 1). */
+/**
+ * The bundled fallback as a ready state (level number 1).
+ *
+ * Uses {@link SAMPLE_LEVEL_ID} as the persistence key and difficulty band 1
+ * (the sample is an easy starter puzzle with no server-assigned band). Progress
+ * saved against this id is LOCAL-ONLY — there is no server row to sync it to.
+ */
 function sampleState(): LevelLoadState {
   return {
     status: 'ready',
     level: sampleLevel,
     levelNumber: 1,
+    levelId: SAMPLE_LEVEL_ID,
+    difficultyBand: 1,
     source: 'sample',
   };
 }
@@ -120,6 +138,8 @@ export function useLevel(
             status: 'ready',
             level: next.gridData,
             levelNumber: next.levelNumber,
+            levelId: next.id,
+            difficultyBand: next.difficultyBand,
             source: 'cache',
           });
           return;

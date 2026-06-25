@@ -39,6 +39,8 @@ jest.mock('@/game/useLevel', () => ({
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     level: require('@/game/sampleLevel').sampleLevel,
     levelNumber: 1,
+    levelId: 'sample-basic-1',
+    difficultyBand: 1,
     source: 'sample',
   }),
   SAMPLE_LEVEL_ID: 'sample-basic-1',
@@ -238,17 +240,21 @@ describe('BasicGame', () => {
     expect(screen.getByText('Pomoć: slovo').parent?.props.accessibilityState?.disabled).toBe(true);
   });
 
-  it('solving the puzzle shows the solved overlay', async () => {
+  it('solving the puzzle shows the Results overlay with a 5-star clean solve', async () => {
     await renderScreen();
-    expect(screen.queryByTestId('solved-overlay')).toBeNull();
+    expect(screen.queryByTestId('results-overlay')).toBeNull();
 
     await solvePuzzle();
 
-    const overlay = screen.getByTestId('solved-overlay');
+    const overlay = screen.getByTestId('results-overlay');
     expect(overlay).toBeTruthy();
-    expect(screen.getByText('Rešeno!')).toBeTruthy();
-    // Solved with no mistakes since we entered the exact solution. The overlay's
-    // own subtree shows the mistake count (the top-bar stat shows it too).
-    expect(within(overlay).getByText('Greške: 0')).toBeTruthy();
+    expect(within(overlay).getByText('Rešeno!')).toBeTruthy();
+    // A clean solve (no mistakes, no hints) on the sample (band 1) → 5 stars.
+    expect(within(overlay).queryAllByLabelText('star-filled')).toHaveLength(5);
+    expect(within(overlay).queryAllByLabelText('star-empty')).toHaveLength(0);
+    // Mistakes/hints rows are present and zero.
+    expect(within(overlay).getByTestId('results-mistakes').props.children.join('')).toBe(
+      'Greške: 0',
+    );
   });
 });

@@ -85,6 +85,8 @@ import { fontFamily, typography, useTheme } from '@/theme';
 
 import * as Haptics from 'expo-haptics';
 
+import { Results } from './Results';
+
 /** Coordinate key, matching the engine's `locked` set scheme ("row,col"). */
 function cellKey(row: number, col: number): string {
   return `${row},${col}`;
@@ -210,9 +212,13 @@ function SubmitFlash({
 function AdvancedGameBoard({
   grid,
   levelNumber,
+  levelId,
+  difficultyBand,
 }: {
   grid: GridData;
   levelNumber: number;
+  levelId: string;
+  difficultyBand: number;
 }) {
   const { colors } = useTheme();
   const { t } = useTranslation();
@@ -437,24 +443,16 @@ function AdvancedGameBoard({
         />
       </Animated.View>
 
-      {/* ── Solved overlay ──────────────────────────────────────────────── */}
+      {/* ── Results overlay (Task 7.3): stars/score/save/next ───────────── */}
       {solved ? (
-        <View testID="solved-overlay" style={styles.overlay}>
-          <View
-            style={[
-              styles.modal,
-              { backgroundColor: colors.background, borderColor: colors.primary },
-            ]}
-          >
-            <Text style={[styles.solvedTitle, { color: colors.primary }]}>
-              {t('solved')}
-            </Text>
-            <Text style={[styles.solvedStat, { color: colors.text }]}>
-              {t('mistakes')}: {state.mistakes}
-            </Text>
-            <Button label={t('next')} onPress={goNext} style={styles.nextButton} />
-          </View>
-        </View>
+        <Results
+          levelId={levelId}
+          mode="advanced"
+          difficultyBand={difficultyBand}
+          mistakes={state.mistakes}
+          hintsUsed={hints.hintsUsed}
+          onNext={goNext}
+        />
       ) : null}
     </SafeAreaView>
   );
@@ -484,7 +482,12 @@ export function AdvancedGame() {
   }
 
   return (
-    <AdvancedGameBoard grid={load.level} levelNumber={load.levelNumber} />
+    <AdvancedGameBoard
+      grid={load.level}
+      levelNumber={load.levelNumber}
+      levelId={load.levelId}
+      difficultyBand={load.difficultyBand}
+    />
   );
 }
 
@@ -522,27 +525,4 @@ const styles = StyleSheet.create({
   },
   flash: { borderRadius: 8 },
   paletteArea: { paddingBottom: 4 },
-  overlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#00000066',
-    paddingHorizontal: 24,
-  },
-  modal: {
-    width: '100%',
-    maxWidth: 360,
-    borderRadius: 18,
-    borderWidth: 2,
-    padding: 24,
-    alignItems: 'center',
-    gap: 12,
-  },
-  solvedTitle: { ...typography.title },
-  solvedStat: { ...typography.heading },
-  nextButton: { marginTop: 8, alignSelf: 'stretch' },
 });

@@ -36,6 +36,8 @@ jest.mock('@/game/useLevel', () => ({
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     level: require('@/game/sampleLevel').sampleLevel,
     levelNumber: 1,
+    levelId: 'sample-basic-1',
+    difficultyBand: 1,
     source: 'sample',
   }),
   SAMPLE_LEVEL_ID: 'sample-basic-1',
@@ -265,16 +267,16 @@ describe('AdvancedGame', () => {
     ).toBe(true);
   });
 
-  it('driving the full solution (correct letters per round) shows the solved overlay', async () => {
+  it('driving the full solution (correct letters per round) shows the Results overlay', async () => {
     await renderScreen();
-    expect(screen.queryByTestId('solved-overlay')).toBeNull();
+    expect(screen.queryByTestId('results-overlay')).toBeNull();
 
     // Each round: for every still-empty/unlocked letter cell, if its needed
     // grapheme is in the palette, place it; then submit. Deals draw only from
     // needed letters, so each round locks ≥1 cell → the loop terminates.
     const maxRounds = letterCells.length + 5; // generous bound
     for (let round = 0; round < maxRounds; round++) {
-      if (screen.queryByTestId('solved-overlay')) break;
+      if (screen.queryByTestId('results-overlay')) break;
 
       // Greedily place palette tiles into matching empty cells. Placing a tile
       // consumes it (palette shrinks + reindexes), so re-read the palette after
@@ -301,10 +303,14 @@ describe('AdvancedGame', () => {
       await press(screen.getByTestId('palette-submit'));
     }
 
-    const overlay = screen.getByTestId('solved-overlay');
+    const overlay = screen.getByTestId('results-overlay');
     expect(overlay).toBeTruthy();
-    expect(screen.getByText('Rešeno!')).toBeTruthy();
-    // Solved with no mistakes since we only ever placed correct letters.
-    expect(within(overlay).getByText('Greške: 0')).toBeTruthy();
+    expect(within(overlay).getByText('Rešeno!')).toBeTruthy();
+    // Solved with no mistakes/hints (only correct letters) → 5 stars on band 1.
+    expect(within(overlay).queryAllByLabelText('star-filled')).toHaveLength(5);
+    expect(within(overlay).queryAllByLabelText('star-empty')).toHaveLength(0);
+    expect(within(overlay).getByTestId('results-mistakes').props.children.join('')).toBe(
+      'Greške: 0',
+    );
   });
 });
