@@ -78,8 +78,10 @@ function inBounds(grid: Grid, row: number, col: number): boolean {
 
 /**
  * Step deltas for a direction: across advances columns, down advances rows.
+ * Exported and shared with the layout builder so the two stay in lockstep with
+ * `Direction` (a single source of truth for coordinate stepping).
  */
-function step(dir: Direction): { dRow: number; dCol: number } {
+export function step(dir: Direction): { dRow: number; dCol: number } {
   return dir === "across" ? { dRow: 0, dCol: 1 } : { dRow: 1, dCol: 0 };
 }
 

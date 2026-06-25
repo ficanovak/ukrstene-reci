@@ -38,7 +38,9 @@
  * ─────────────────────────────────────────────────────────────────────────
  * 1. SEED: pick the longest candidate (ties broken by RNG-shuffled order) and
  *    place it interior so its clue cell fits in-bounds. We place it across at a
- *    central row with col >= 1 (so clueCol = col - 1 >= 0).
+ *    central row with col >= 1 (so clueCol = col - 1 >= 0). For v1 the seed is
+ *    always placed ACROSS and center-biased; seed-direction diversity is a
+ *    deliberate future enhancement.
  * 2. GROW: repeatedly scan remaining candidates; for each, enumerate every
  *    placement that CROSSES an already-placed word on a matching grapheme
  *    (anchored on a shared letter), and that satisfies `canPlace` + the
@@ -61,6 +63,7 @@ import {
   canPlace,
   createGrid,
   placeWord,
+  step,
   type Direction,
   type Grid,
 } from "./grid.js";
@@ -102,11 +105,6 @@ export interface BuildLayoutOptions {
   words: { graphemes: string[] }[];
   /** Seeded RNG in [0,1); injected for determinism. Never use Math.random. */
   rng: () => number;
-}
-
-/** Step deltas for a direction (mirrors grid.ts). */
-function step(dir: Direction): { dRow: number; dCol: number } {
-  return dir === "across" ? { dRow: 0, dCol: 1 } : { dRow: 1, dCol: 0 };
 }
 
 /** The clue cell for a word starting at (row,col) running `dir`. */
@@ -273,7 +271,7 @@ function commit(
  */
 function placeSeed(
   state: BuildState,
-  candidates: { graphemes: string[]; origIndex: number }[],
+  candidates: { graphemes: string[] }[],
 ): number {
   // Pick the longest; ties resolved by current (shuffled) order via a stable scan.
   let bestPos = -1;
@@ -315,22 +313,31 @@ function placeSeed(
   return -1;
 }
 
+/** One legal crossing placement for a candidate word. */
+interface Placement {
+  row: number;
+  col: number;
+  dir: Direction;
+}
+
 /**
- * Finds the best crossing placement for one candidate against the current
+ * Finds the best crossing placement(s) for one candidate against the current
  * state. Enumerates: for each occupied letter cell, for each letter in the
  * candidate equal to that cell's grapheme, the placement that aligns them in
- * each orientation. Returns the highest-crossing legal placement (ties → RNG),
- * or null if none is legal.
+ * each orientation. Returns the maximum crossing count and ALL placements that
+ * achieve it, or null if no legal crossing placement exists.
+ *
+ * This function is intentionally RNG-FREE: it does no tie-breaking. The caller
+ * gathers ties across all candidates and performs a single RNG shuffle to pick
+ * the committed word (see the grow loop). Keeping RNG out of here means RNG
+ * consumption is independent of pool size/order — part of the determinism
+ * contract.
  */
 function bestPlacementFor(
   state: BuildState,
   graphemes: string[],
-  rng: () => number,
-): { row: number; col: number; dir: Direction; crossings: number } | null {
-  interface Cand {
-    row: number;
-    col: number;
-    dir: Direction;
+): { crossings: number; placements: Placement[] } | null {
+  interface Cand extends Placement {
     crossings: number;
   }
   const seen = new Set<string>();
@@ -377,12 +384,13 @@ function bestPlacementFor(
     return null;
   }
 
-  // Pick max crossings; break ties deterministically via an RNG shuffle so the
-  // choice is seed-dependent but reproducible.
+  // Return the max crossing count plus every placement that ties for it; the
+  // caller does the (single, seeded) tie-break across all candidates.
   const maxCrossings = Math.max(...candidates.map((c) => c.crossings));
-  const best = candidates.filter((c) => c.crossings === maxCrossings);
-  const pick = shuffled(best, rng)[0];
-  return pick;
+  const placements = candidates
+    .filter((c) => c.crossings === maxCrossings)
+    .map((c) => ({ row: c.row, col: c.col, dir: c.dir }));
+  return { crossings: maxCrossings, placements };
 }
 
 /**
@@ -405,13 +413,9 @@ export function buildLayout(opts: BuildLayoutOptions): Layout {
     return { width, height, words: [], cells: state.grid.cells };
   }
 
-  // Build the working candidate pool, tagging original indices (unused by the
-  // result but handy for debugging), then shuffle for deterministic ordering.
+  // Build the working candidate pool, then shuffle for deterministic ordering.
   const pool = shuffled(
-    opts.words.map((w, origIndex) => ({
-      graphemes: w.graphemes.slice(),
-      origIndex,
-    })),
+    opts.words.map((w) => ({ graphemes: w.graphemes.slice() })),
     rng,
   );
 
@@ -420,7 +424,10 @@ export function buildLayout(opts: BuildLayoutOptions): Layout {
   if (seedPos >= 0) {
     pool.splice(seedPos, 1);
   } else {
-    // No seed could be placed (every word too wide for a clue column, etc.).
+    // FAILURE MODE: no seed could be placed (e.g. every candidate is wider than
+    // width-1, leaving no room for a clue column). With no seed there is nothing
+    // to grow from, so we return an empty (words.length === 0) layout rather
+    // than throwing; callers must tolerate an empty result.
     return { width, height, words: [], cells: state.grid.cells };
   }
 
@@ -428,32 +435,52 @@ export function buildLayout(opts: BuildLayoutOptions): Layout {
   // Bounded by the candidate count: each outer pass places at most all
   // remaining words, and we stop the instant a full pass places nothing — so
   // the loop runs at most `pool.length` passes and always terminates.
+  //
+  // SCALING / KNOWN LIMITATION: each pass re-scans EVERY remaining candidate
+  // and re-derives its best placement from scratch (`bestPlacementFor` walks
+  // all placed letter cells). That is roughly O(N² · placed · L) work for N
+  // candidate words — fine for the small, curated pools this builder is meant
+  // to receive, but it does NOT scale to a full dictionary. The incremental
+  // recompute optimization (only re-score candidates whose anchor cells changed
+  // when the last word was committed) is deliberately NOT implemented here.
+  // Callers that generate in bulk (Task 2.8) MUST cap/sample the candidate-word
+  // list passed to `buildLayout` to a reasonable size rather than handing it an
+  // entire dictionary.
   let progress = true;
   while (progress && pool.length > 0) {
     progress = false;
 
-    // Score every remaining candidate's best placement, then place the single
-    // globally-best one (most crossings) this pass. This yields denser, more
-    // interlocked layouts than first-fit. Ties broken via RNG.
+    // Score every remaining candidate's best placement(s), find the globally
+    // highest crossing count, and collect ALL (candidate, placement) options
+    // tied for it. Placing the most-crossing word yields denser, more
+    // interlocked layouts than first-fit.
     interface PoolPlacement {
       poolIndex: number;
       row: number;
       col: number;
       dir: Direction;
-      crossings: number;
     }
-    const options: PoolPlacement[] = [];
+    let maxCrossings = 0;
+    let tied: PoolPlacement[] = [];
     for (let i = 0; i < pool.length; i++) {
-      const placement = bestPlacementFor(state, pool[i].graphemes, rng);
-      if (placement) {
-        options.push({ poolIndex: i, ...placement });
+      const result = bestPlacementFor(state, pool[i].graphemes);
+      if (!result) continue;
+      if (result.crossings > maxCrossings) {
+        maxCrossings = result.crossings;
+        tied = [];
+      }
+      if (result.crossings === maxCrossings) {
+        for (const p of result.placements) {
+          tied.push({ poolIndex: i, row: p.row, col: p.col, dir: p.dir });
+        }
       }
     }
 
-    if (options.length > 0) {
-      const maxCrossings = Math.max(...options.map((o) => o.crossings));
-      const best = options.filter((o) => o.crossings === maxCrossings);
-      const chosen = shuffled(best, rng)[0];
+    if (tied.length > 0) {
+      // SOLE RNG-CONSUMPTION POINT for placement selection. Exactly one shuffle
+      // per committed word, independent of pool size/order — this is the
+      // determinism contract: same {width,height,words,seed} ⇒ same layout.
+      const chosen = shuffled(tied, rng)[0];
       const cand = pool[chosen.poolIndex];
       commit(state, cand.graphemes, chosen.row, chosen.col, chosen.dir);
       pool.splice(chosen.poolIndex, 1);

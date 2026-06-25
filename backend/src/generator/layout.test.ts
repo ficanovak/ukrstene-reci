@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { splitGraphemes } from "./graphemes.js";
 import { buildLayout, type Layout, type LayoutWord } from "./layout.js";
 import { makeRng } from "./rng.js";
 
@@ -266,5 +267,75 @@ describe("edge cases", () => {
     const b = buildLayout({ ...opts, rng: makeRng(55) });
     expect(a).toEqual(b);
     expect(a.words.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("returns an empty layout (no throw) when no seed fits", () => {
+    // Every word is wider than width-1, so no seed can leave a clue column and
+    // nothing can be placed. Must return an empty layout, not throw.
+    const width = 5;
+    const height = 7;
+    const wide = [
+      { graphemes: ["A", "B", "C", "D", "E"] }, // length 5 == width, needs 6
+      { graphemes: ["F", "G", "H", "I", "J", "K"] }, // length 6 > width
+    ];
+    let layout: Layout | undefined;
+    expect(() => {
+      layout = buildLayout({ width, height, words: wide, rng: makeRng(3) });
+    }).not.toThrow();
+    expect(layout?.words.length).toBe(0);
+    expect(layout?.cells.length).toBe(width * height);
+  });
+});
+
+describe("digraphs (multi-char graphemes)", () => {
+  // The whole module is built around one-grapheme-per-cell where a grapheme may
+  // be a multi-code-point digraph like "NJ". These words share the digraph "NJ"
+  // so they can cross ON that single cell, exercising the digraph path end to
+  // end (split → place → cross → single-cell occupancy).
+  const NJIVA = splitGraphemes("NJIVA", "lat", "sr"); // ["NJ","I","V","A"]
+  const KONJ = splitGraphemes("KONJ", "lat", "sr"); // ["K","O","NJ"]
+
+  it("splits the digraph into a single grapheme cell", () => {
+    expect(NJIVA).toEqual(["NJ", "I", "V", "A"]);
+    expect(KONJ).toEqual(["K", "O", "NJ"]);
+  });
+
+  it("crosses two words on a shared digraph cell, occupying one cell", () => {
+    // Try a spread of seeds; with two words sharing exactly one grapheme (NJ)
+    // any successful 2-word layout must cross on it.
+    let crossed = false;
+    for (const seed of [0, 1, 2, 3, 4, 5, 6, 7]) {
+      const layout = buildLayout({
+        width: 8,
+        height: 8,
+        words: [{ graphemes: NJIVA }, { graphemes: KONJ }],
+        rng: makeRng(seed),
+      });
+      if (layout.words.length < 2) continue;
+
+      // Find the shared cell and assert both words place "NJ" there.
+      const [a, b] = layout.words;
+      const aCells = new Map<string, string>();
+      for (let i = 0; i < a.graphemes.length; i++) {
+        const r = a.dir === "down" ? a.row + i : a.row;
+        const c = a.dir === "across" ? a.col + i : a.col;
+        aCells.set(`${r},${c}`, a.graphemes[i]);
+      }
+      for (let i = 0; i < b.graphemes.length; i++) {
+        const r = b.dir === "down" ? b.row + i : b.row;
+        const c = b.dir === "across" ? b.col + i : b.col;
+        const k = `${r},${c}`;
+        if (aCells.has(k)) {
+          // Shared cell holds the SAME grapheme for both, and it is the digraph.
+          expect(aCells.get(k)).toBe(b.graphemes[i]);
+          expect(b.graphemes[i]).toBe("NJ");
+          // The resolved grid cell is exactly the digraph string (one cell).
+          expect(layout.cells[r * layout.width + c]).toBe("NJ");
+          crossed = true;
+        }
+      }
+      if (crossed) break;
+    }
+    expect(crossed).toBe(true);
   });
 });
