@@ -4,6 +4,7 @@ import Fastify from "fastify";
 import { prisma as runtimePrisma } from "./db/client.js";
 import { authRoutes } from "./routes/auth.js";
 import { healthRoutes } from "./routes/health.js";
+import { levelsRoutes } from "./routes/levels.js";
 import { defaultSocialVerifier } from "./services/socialVerify.js";
 
 import type { SocialVerifier } from "./services/socialVerify.js";
@@ -103,6 +104,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   // API versioning: all feature routes mount under `/v1`.
   app.register(healthRoutes, { prefix: "/v1" });
   app.register(authRoutes, { prefix: "/v1" });
+  app.register(levelsRoutes, { prefix: "/v1" });
 
   // TODO: add CORS / helmet / rate-limiting when a real client integrates and
   // the threat model is clearer (YAGNI for the skeleton).
