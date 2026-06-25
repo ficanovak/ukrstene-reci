@@ -1,0 +1,16 @@
+// Prisma schema for the "Ukrstene Reci" backend.
+// Models are added in Task 1.2; for now this only wires up the
+// generator + datasource so `prisma generate` / `prisma validate` work.
+//
+// Prisma 7 manages the connection URL outside the schema:
+//   - the CLI reads it from `prisma.config.ts` (`datasource.url`)
+//   - the runtime client gets it via a driver adapter (see src/db/client.ts)
+// The `?schema=ukrstene` isolation lives in the DATABASE_URL itself.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
