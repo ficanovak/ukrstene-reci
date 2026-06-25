@@ -151,7 +151,9 @@ npx expo-doctor                  # health check (21/21)
 - `game/` — `engine` (pure game state: fill, intersekcije, mistakes, isSolved), `gridData.types` (mobile mirror backend GridData), `sampleLevel` (dev fallback), `useLevel` (cache→sample loader)
 - `components/grid/` — `Grid`/`Cell`/`ClueCell` (auto-size, fit širine 6–9 bez skrola, asocijacije+strelice, highlight)
 - `components/keyboard/` — `Keyboard` + `layouts` (po jeziku/pismu, digrafi jedan taster)
-- `screens/BasicGame` — playable Basic mod (game/[mode] ruta za basic; advanced placeholder)
+- `game/advanced` — Advanced palette engine (deal 5 iz potrebnih, place/unplace, submit lock/clear/mistake/refill, seeded), `game/rng` (mulberry32)
+- `components/palette/` — `LetterPalette`/`LetterTile` (amber pločice, tap-to-place, Potvrdi)
+- `screens/BasicGame` + `screens/AdvancedGame` — oba moda igriva (game/[mode] ruta granja basic/advanced); Advanced ima §6.4 animacije (RN Animated) + haptiku
 
 **API base URL:** `app.json` → `expo.extra.apiBaseUrl` (default `http://localhost:3000`). Android emulator: `10.0.2.2`; fizički uređaj: LAN IP host-a; prod: VPS HTTPS preko EAS profila.
 
