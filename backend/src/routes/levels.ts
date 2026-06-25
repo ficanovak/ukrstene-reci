@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { getNextLevels } from "../services/levels.js";
 
+import type { AuthPayload } from "../types/auth.js";
 import type { FastifyPluginAsync } from "fastify";
 
 /**
@@ -60,7 +61,7 @@ export const levelsRoutes: FastifyPluginAsync = async (app) => {
         return reply.code(404).send({ error: "unknown language" });
       }
 
-      const userId = (request.user as { sub: string }).sub;
+      const userId = (request.user as AuthPayload).sub;
       const levels = await getNextLevels(app.prisma, {
         userId,
         languageId: language.id,
